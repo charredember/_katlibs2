@@ -10,7 +10,7 @@ if SERVER then
     local function relayFiles(ply)
         table.insert(relayQueue,coroutine.wrap(function()
             while net.isStreaming() do coroutine.yield() end
-        
+
             net.start("kl:aup_relay")
             net.writeStream(clFilesSerialized)
             net.send(ply)
@@ -29,10 +29,15 @@ if SERVER then
         clFiles = nil
 
         relayFiles()
-        hook.add("ClientInitialized","kl:aup_ci",function(p)
+        hook.add("ClientInitialized","kl:aup_ci",function(p,aup)
+            if aup then return end
             relayFiles(p)              
         end)
     end
+
+    net.receive("kl:aup_clInit",function()
+        hook.run("ClientInitialized",net.readEntity(),true)
+    end)
 
     net.receive("kl:aup_code",function()
         local domain = net.readUInt(2)
@@ -42,7 +47,7 @@ if SERVER then
                 local func = loadstring(code)
                 func()
             end
-            
+
             if domain ~= 1 then
                 table.insert(clFiles,code)
             end

@@ -10,5 +10,9 @@ net.receive("kl:aup_relay",function()
         end
 
         if autoupdateproxy.main then autoupdateproxy.main() end
+
+        net.start("kl:aup_clInit")
+        net.writeEntity(owner())
+        net.send()
     end)
 end)

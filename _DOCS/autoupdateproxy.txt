@@ -15,6 +15,11 @@ compared to normal sf file distribution:
 
 file load order is important, of course
 
+ClientInitialized is called a second time by this library once all the cl files 
+have reached their destination. a second argument is added to this call
+ClientInitialized(ply, aup)
+where aup is true if this hook call was caused by aup. code accordingly
+
 --[[functions] ------------------------------------------------------------------------------------]]
 
 autoupdateproxy.runFile(path, autoupdateproxy.SH, bool or nil owneronly)

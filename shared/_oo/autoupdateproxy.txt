@@ -19,7 +19,7 @@ if SERVER then
             if table.isEmpty(relayQueue) then hook.remove("tick","kl:aup_tick_rf") end
             coroutine.yield()
         end))
-        hook.add("tick","kl:aup_tick_rf",relayQueue[1])
+        hook.add("tick","kl:aup_tick_rf",function() relayQueue[1]() end)
     end
 
     local function allFilesReceived()

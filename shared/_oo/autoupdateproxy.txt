@@ -41,6 +41,7 @@ if SERVER then
 
     net.receive("kl:aup_code",function()
         local domain = net.readUInt(2)
+        local owneronly = net.readBool()
         local last = net.readBool()
         net.readStream(function(code)
             if domain ~= 2 then
@@ -48,7 +49,7 @@ if SERVER then
                 func()
             end
 
-            if domain ~= 1 then
+            if domain ~= 1 and not owneronly then
                 table.insert(clFiles,code)
             end
 
@@ -61,7 +62,7 @@ if SERVER then
 elseif CLIENT then
     local queue = {}
     function autoupdateproxy.runFile(path,domain,owneronly)
-        table.insert(queue,{path=path,domain=domain})
+        table.insert(queue,{path=path,domain=domain,owneronly=owneronly})
     end
 
     timer.simple(0,function() autoupdateproxy.runFile = function() throw("ki:autoupdateproxy| not during runtime") end end)
@@ -70,6 +71,8 @@ elseif CLIENT then
         repeat
             local path = queue[1].path
             local domain = queue[1].domain
+            local owneronly = queue[1].owneronly or false
+
             table.remove(queue,1)
 
             local code = file.readInGame("data/starfall/"..path)
@@ -80,13 +83,14 @@ elseif CLIENT then
                 func() 
             end
 
-            if owneronly then return end
+            if owneronly and domain == 2 then return end
 
             while net.isStreaming() do coroutine.yield() end
             coroutine.yield()
 
             net.start("kl:aup_code")
             net.writeUInt(domain,2)
+            net.writeBool(owneronly)
             net.writeBool(table.isEmpty(queue))
             net.writeStream(code, true)
             net.send()

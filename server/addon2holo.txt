@@ -1,0 +1,68 @@
+--@author katsu
+--@server
+
+--[[
+converts addon-dependent builds into holograms,
+since holograms are easy to work with.
+you can then save those holograms, removing addon dependencies in your build.
+
+(you will need to save your holograms yourself; this library was
+merely designed to work with my proprietary hologram library)
+
+keeping it separate from my holo lib means that it should be able to work with your hologram
+library so long as yours supports converting groups of active hologram entities
+into one of your "models"
+
+i like to keep a copy of my models in prop/pac form using the tools listed here,
+so that it's easy to edit and ready to compile back into my model format using
+this lib and my hologram library
+]]
+
+addon2holo = {}
+
+------------------------------------------------------------------------------------
+--PARENT ENT MULTIPLE HOLO RETURN CONVERSION
+
+--PAC3 Models
+function addon2holo.PAC3_convertToHolos(base)
+
+end
+
+------------------------------------------------------------------------------------
+--SINGLE ENT CONVERSION
+
+--Proper Clipping - Sevii
+--https://steamcommunity.com/sharedfiles/filedetails/?id=2256491552
+function addon2holo.ProperClipping_convertClippedPropToHolo(e)
+    local clipping = e:getTable().ClipData
+    if not clipping or table.isEmpty(clipping) then return end
+
+    h = hologram.create(e:getPos(),e:getAngles(),e:getModel())
+    h:setMaterial(e:getMaterial())
+    h:setColor(e:getColor())
+    h:setParent(e)
+
+    for i=1,#clipping do
+        local clip = clipping[i]
+        h:setClip(i, true, clip.norm*clip.dist, clip.norm, h)
+    end
+
+    e:setNoDraw(true)
+    return h
+end
+
+--Resizer - McKay
+--https://steamcommunity.com/sharedfiles/filedetails/?id=116892991
+function addon2holo.Resizer_convertResizedPropToHolo(e)
+    local scale = e:getManipulateBoneScale(0)
+    if scale == Vector(1,1,1) then return end
+    
+    local color = e:getColor()
+    h = hologram.create(e:getPos(),e:getAngles(),e:getModel(),scale)
+    h:setMaterial(e:getMaterial())
+    h:setColor(e:getColor())
+    h:setParent(e)
+    
+    e:setNoDraw(true)
+    return h
+end

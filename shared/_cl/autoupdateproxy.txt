@@ -1,0 +1,14 @@
+--@author katsu
+--@client
+
+net.receive("kl:aup_relay",function()
+    net.readStream(function(serializedCode)
+        local codeTab = von.deserialize(serializedCode)
+        for i=1,#codeTab do
+            local func = loadstring(codeTab[i])
+            func()
+        end
+
+        if autoupdateproxy.main then autoupdateproxy.main() end
+    end)
+end)

@@ -1,5 +1,3 @@
-
-
 --[[purpose] ------------------------------------------------------------------------------------
 manual sf file distribution
 
@@ -10,8 +8,9 @@ sf in my dupes were up to date all the time.
 compared to normal sf file distribution:
     +dupes will auto update to latest code instead of keeping old code
     +possibly less chance of net timeout (we have control over that instead of SF)
-    -much slower
-    -possibly more expensive execution on other clients (have to unpack code)
+    -slower
+    -huge net traffic
+    -possible expensive execution on other clients (have to decompress/unpack code)
 
 file load order is important, of course
 

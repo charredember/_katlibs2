@@ -2,7 +2,7 @@
 --@client
 
 net.receive("kl:aup_relay",function()
-    net.readStream(function(serializedCode)
+    net.readBStream(function(serializedCode)
         local codeTab = von.deserialize(serializedCode)
         for i=1,#codeTab do
             local func = loadstring(codeTab[i])
@@ -12,7 +12,6 @@ net.receive("kl:aup_relay",function()
         if autoupdateproxy.main then autoupdateproxy.main() end
 
         net.start("kl:aup_clInit")
-        net.writeEntity(owner())
         net.send()
     end)
 end)

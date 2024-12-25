@@ -2,6 +2,8 @@
 --@include _katlibs2/shared/_oo/autoupdateproxy.txt
 --@include _katlibs2/shared/_cl/autoupdateproxy.txt
 
+if not net.writeBStream then throw("katlibs:autoupdateproxy requires netbstream loaded before!") end
+
 autoupdateproxy = {
     SH = 0,
     SV = 1,

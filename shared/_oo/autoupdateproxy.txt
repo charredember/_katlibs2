@@ -9,12 +9,10 @@ if SERVER then
     local relayQueue = {}
     local function relayFiles(ply)
         table.insert(relayQueue,coroutine.wrap(function()
-            while net.isStreaming() do coroutine.yield() end
-
             net.start("kl:aup_relay")
-            net.writeStream(clFilesSerialized)
+            net.writeBStream(clFilesSerialized)
             net.send(ply)
-
+            
             table.remove(relayQueue,1)
             if table.isEmpty(relayQueue) then hook.remove("tick","kl:aup_tick_rf") end
             coroutine.yield()
@@ -24,6 +22,9 @@ if SERVER then
 
     local function allFilesReceived()
         if autoupdateproxy.main then autoupdateproxy.main() end
+        hook.run("ClientInitialized",owner(),true)
+        
+        if table.isEmpty(clFiles) then return end
 
         clFilesSerialized = von.serialize(clFiles)
         clFiles = nil
@@ -35,15 +36,15 @@ if SERVER then
         end)
     end
 
-    net.receive("kl:aup_clInit",function()
-        hook.run("ClientInitialized",net.readEntity(),true)
+    net.receive("kl:aup_clInit",function(_,ply)
+        hook.run("ClientInitialized",ply,true)
     end)
 
     net.receive("kl:aup_code",function()
         local domain = net.readUInt(2)
         local owneronly = net.readBool()
         local last = net.readBool()
-        net.readStream(function(code)
+        net.readBStream(function(code)
             if domain ~= 2 then
                 local func = loadstring(code)
                 func()
@@ -72,7 +73,6 @@ elseif CLIENT then
             local path = queue[1].path
             local domain = queue[1].domain
             local owneronly = queue[1].owneronly or false
-
             table.remove(queue,1)
 
             local code = file.readInGame("data/starfall/"..path)
@@ -92,7 +92,7 @@ elseif CLIENT then
             net.writeUInt(domain,2)
             net.writeBool(owneronly)
             net.writeBool(table.isEmpty(queue))
-            net.writeStream(code, true)
+            net.writeBStream(code, true)
             net.send()
 
             local awaitReceive = true

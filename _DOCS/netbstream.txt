@@ -1,0 +1,13 @@
+--[[purpose] ------------------------------------------------------------------------------------
+net.readStream is useless as shit
+i have to wait for a stream to stop before I can start a receive a one?
+just queue the received data? moron???
+
+B stands for better because fuck you
+
+--[[functions] ------------------------------------------------------------------------------------]]
+
+net.writeBStream(string dataToSend)
+
+net.readBStream(function cb)
+    --cb(string receivedData)

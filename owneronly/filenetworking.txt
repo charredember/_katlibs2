@@ -4,7 +4,7 @@
 
 --[[
 library only handles up to 8.3 kb files (netcode doesnt stream/chunk)
-if i ever need more i will write streaming netcode for this lib
+--TODO: use new netbstream library to allow this library to load massive files
 ]]
 
 filenetworking = {}

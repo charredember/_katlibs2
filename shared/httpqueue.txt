@@ -9,12 +9,21 @@ httpQueue = {}
 
 local queued = {}
 local function callNextInQueue()
+    hook.runRemote(nil,"kl:hq_httpReqEnded")
     if queued[1] ~= nil then //when an active request finishes (a http slot is free), check the queue to see if one is waiting
         coroutine.resume(queued[1])
         table.remove(queued,1)
     end
 end
+
+hook.add("remote","kl:hq_remote",function(msgOrigin,msgOwner,msgName)
+    if msgOrigin == chip() then return end
+    if msgOwner ~= owner() then return end
+    if msgName ~= "kl:hq_httpReqEnded" then return end
     
+    callNextInQueue()
+end)
+
 function httpQueue.get(url,cbSuccess,cbFail,headers)
     local co
     co = coroutine.create(function()

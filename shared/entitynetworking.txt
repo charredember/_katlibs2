@@ -7,4 +7,4 @@ entitynetworking = {}
 entitynetworking.keys = {}
 
 local realm = SERVER and "sv" or "cl"
-require("_katlibs2/shared/_"..realm.."/entitynetworking.txt")
+require("_katlibs2/shared/_" .. realm .. "/entitynetworking.txt")

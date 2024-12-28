@@ -8,7 +8,7 @@ function assetloader.loadFromZip(zipdata,threaded)
     local stream = bit.stringstream(zipdata)
     local filePaths = {}
     local rawData = {}
-    
+
     while true do
         local signature = stream:readUInt32()
         if signature ~= SIGNATURE_LOCALFILEHEADER then
@@ -29,30 +29,30 @@ function assetloader.loadFromZip(zipdata,threaded)
         end
 
         stream:skip(4) --skip modify time(2) + modify date(2)
-        
+
         local CRC32_checksum = stream:readUInt32()
 
         local compressedSize = stream:readUInt32()
-        
+
         stream:skip(4) --skip uncompressed size(4)
-        
+
         local fileName_len = stream:readUInt16()
         local extraField_len = stream:readUInt16()
-        
+
         local fileName = stream:read(fileName_len)
         stream:skip(extraField_len) --skip extrafield
 
         local fileData = stream:read(compressedSize)
         local extension = fileName:match("^.+(%..+)$")
-        
+
         if extension == ".txt" then
             rawData[fileName] = fileData
         end
 
         printConsole(Color(255,0,0),"kl:al|",Color(255,255,255)," file loaded: " .. fileName)
 
-        filePaths[fileName] = file.writeTemp(CRC32_checksum..extension,fileData)
-        
+        filePaths[fileName] = file.writeTemp(CRC32_checksum .. extension,fileData)
+
         if threaded == true then
             coroutine.yield()
         end
@@ -66,14 +66,14 @@ local activeRequests = {}
 
 net.receive("kl:al_relayFiles",function()
     local filePaths = {}
-    local rawData = {}    
+    local rawData = {}
     local cacheExists = true
-    
+
     local key = net.readString()
     local ct = net.readUInt(10)
-    for i=1,ct do
+    for i = 1,ct do
         local fileName,actualFileName = net.readString(),net.readString()
-        
+
         local filePath = file.existsTemp(actualFileName)
         if not filePath then
             cacheExists = false
@@ -84,13 +84,13 @@ net.receive("kl:al_relayFiles",function()
             filePaths[fileName] = filePath
         end
     end
-    
+
     cachedFiles[key] = {
         cacheExists = cacheExists,
         filePaths = filePaths,
         rawData = rawData,
     }
-    
+
     if activeRequests[key] then activeRequests[key]() end
 
 end)
@@ -100,7 +100,7 @@ local function getCachedFiles(key,url)
     repeat
         keyCache = cachedFiles[key]
         if not keyCache then coroutine.yield() end
-    until(keyCache)
+    until (keyCache)
 
     if keyCache.cacheExists then
         return true,keyCache.filePaths,keyCache.rawData
@@ -114,14 +114,14 @@ local function downloadFiles(key,url,finishedCB,threadCB)
     httpQueue.get(url,function(httpdata)
         if threadCB then
             local finished,filePaths,rawData
-            local thread = coroutine.wrap(function() 
+            local thread = coroutine.wrap(function()
                 filePaths,rawData = assetloader.loadFromZip(httpdata,true)
                 finished = true
                 while true do coroutine.yield(true) end
             end)
 
             hookItr = hookItr + 1
-            local hookKey = "kl:al_httpZipLoad"..tostring(hookItr)
+            local hookKey = "kl:al_httpZipLoad" .. tostring(hookItr)
             hook.add("tick",hookKey,function()
                 threadCB(finished,thread)
                 if finished then
@@ -150,11 +150,11 @@ function assetloader.loadFromHTTPZip(key,url,finishedCB,threadCB)
     local co = coroutine.wrap(function()
         local filePaths = {}
         local rawData = {}
-        
+
         local filesCached
         filesCached,filePaths,rawData = getCachedFiles(key,url)
         activeRequests[key] = nil
-                
+
         if filesCached then
             finishedCB(filePaths,rawData)
         else

@@ -3,8 +3,8 @@
 --@include _katlibs2/shared/_sv/serverinput.txt
 --@include _katlibs2/shared/_cl/serverinput.txt
 
-if SERVER then 
-    serverInput = {} 
+if SERVER then
+    serverInput = {}
     require("_katlibs2/shared/_sv/serverinput.txt")
 elseif CLIENT then
     require("_katlibs2/shared/_cl/serverinput.txt")

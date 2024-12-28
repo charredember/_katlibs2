@@ -4,7 +4,7 @@
 local fsmstate = class("katlib_fsmcontroller")
 
 local emptyTempHooksTab = {}
-setmetatable(emptyTempHooksTab, {["__index"]=function(t,k) local newTab = {} t[k] = newTab return newTab end})
+setmetatable(emptyTempHooksTab, {["__index"] = function(t,k) local newTab = {} t[k] = newTab return newTab end})
 
 local stateID = 0
 
@@ -13,26 +13,26 @@ function fsmstate:initialize(stateName,func)
     self.stateName = stateName
 
     self._func = func
-    
+
     stateID = stateID + 1
-    self._stateID = tostring(chip():entIndex())..tostring(stateID)
+    self._stateID = tostring(chip():entIndex()) .. tostring(stateID)
 end
 
 function fsmstate:addTempHook(hookname,uniquekey,func)
     if func == nil then --no name given, hook can only be removed on state end
         func = uniquekey
-        local hookNum = #self.stateController._unnamedTempHooks[hookname]+1
-        uniquekey = "kl:fsm_"..self._stateID.."_tHookID_"..tostring(hookNum)
-        table.insert(self.stateController._unnamedTempHooks[hookname],uniquekey)   
+        local hookNum = #self.stateController._unnamedTempHooks[hookname] + 1
+        uniquekey = "kl:fsm_" .. self._stateID .. "_tHookID_" .. tostring(hookNum)
+        table.insert(self.stateController._unnamedTempHooks[hookname],uniquekey)
     else --name given, hook can be removed partway through the state if need be
-        uniquekey = "kl:fsm_"..self._stateID.."_tHook_"..uniquekey
+        uniquekey = "kl:fsm_" .. self._stateID .. "_tHook_" .. uniquekey
         self.stateController._tempHooks[hookname][uniquekey] = true
     end
     hook.add(hookname,uniquekey,func)
 end
 
 function fsmstate:removeTempHook(hookname,name)
-    hook.remove(hookname,"kl:fsm_"..self._stateID.."_tHook_"..name)
+    hook.remove(hookname,"kl:fsm_" .. self._stateID .. "_tHook_" .. name)
 end
 
 function fsmstate:addExitCB(cb)
@@ -45,10 +45,10 @@ function fsm:initialize()
     self.stateTable = {}
     self.currState = nil
     self.currStateName = nil
-    
+
     self._unnamedTempHooks = table.copy(emptyTempHooksTab)
     self._tempHooks = table.copy(emptyTempHooksTab)
-    self._exitCBs = {}    
+    self._exitCBs = {}
 end
 
 function fsm:addState(stateName,func)
@@ -65,7 +65,7 @@ end
 
 function fsm:setState(stateName,...)
     if self.stateTable == nil then throw("kl:fsm| no state table!") end
-   
+
     --run last state exit cbs
     if #self._exitCBs > 0 then
         for _,cb in pairs(self._exitCBs) do
@@ -86,26 +86,23 @@ function fsm:setState(stateName,...)
         end
     end
 
-    if stateName == nil then
-        --dead end; discard statecontroller
-    elseif self.stateTable[stateName] ~= nil then
-        local nextState = self.stateTable[stateName]
-        
+    --statecontroller gets automatically discarded if state is nil
+    if stateName ~= nil and self.stateTable[stateName] ~= nil then
         --setup new state
         self.currStateName = stateName
         self._unnamedTempHooks = table.copy(emptyTempHooksTab)
         self._tempHooks = table.copy(emptyTempHooksTab)
-        self._exitCBs = {}   
+        self._exitCBs = {}
 
         --run
         self.stateTable[stateName]:_func(...)
-        
+
         --call statechange cb
         if self.stateChangeCB ~= nil then
             self.stateChangeCB(stateName)
         end
     else
-        throw("kl:fsm| state '" .. stateName .."' doesnt exist!")
+        throw("kl:fsm| state '" .. stateName .. "' doesnt exist!")
     end
 end
 

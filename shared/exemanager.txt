@@ -1,0 +1,20 @@
+--@shared
+--@include _katlibs2/shared/_oo/exemanager.txt
+--@include _katlibs2/shared/_cl/exemanager.txt
+--@include _katlibs2\shared\_sv\exe_clientinitializedfix.txt
+
+--manager for executable data format. automatically distributes files to chip sv and cl as requested
+if not net.writeBStream then throw("katlibs:exemanager requires netbstream loaded before!") end
+
+exemanager = {
+    distributeFiles = function() end,
+}
+
+if player() == owner() then
+    require("_katlibs2/shared/_oo/exemanager.txt")
+    if SERVER then require("_katlibs2/shared/_sv/exe_clientinitializedfix.txt") end
+elseif CLIENT then
+    require("_katlibs2/shared/_cl/exemanager.txt")
+end
+
+require = function() end

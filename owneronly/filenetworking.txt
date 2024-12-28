@@ -13,20 +13,20 @@ local function canSend(fileSize)
     if fileSize > 8333 then
         throw("kl:fn| encountered a file too big for current netcode! time to write net streaming code! (FUCK)")
     end
-    
-    return fileSize <= net.getBytesLeft()/1.2
+
+    return fileSize <= net.getBytesLeft() / 1.2
 end
 
 local networkingQueue = {}
 local function networkQueueLoop() --runs every 1.66 seconds if we are reaching bandwidth limits (default net burst refresh is 5 kB/sec)
     local fileSize = networkingQueue[1].fileSize
-    
+
     if canSend(fileSize) then
         networkingQueue[1].func()
         table.remove(networkingQueue,1)
-        
+
         local queueSize = #networkingQueue
-        
+
         if queueSize == 0 then
             printConsole(Color(255,0,0),"kl:fn| ",Color(255,255,255),"queue finished")
             timer.remove("kl:fn_queueloop")
@@ -38,11 +38,11 @@ end
 
 function networkFile(netmsgName,path,data,fileSize)
     local queueFunc = function()
-        net.start(netmsgName)    
+        net.start(netmsgName)
         net.writeString(path)
         net.writeUInt(fileSize,16)
         net.writeData(data,fileSize)
-        
+
         if SERVER then
             net.send(owner())
         elseif CLIENT then
@@ -57,15 +57,15 @@ function networkFile(netmsgName,path,data,fileSize)
             ["func"] = queueFunc,
             ["fileSize"] = fileSize,
         })
-        if not timer.exists("kl:fn_queueloop") then 
+        if not timer.exists("kl:fn_queueloop") then
             --if we can send file because bandwidth limit then start the queueloop
             --if we can't send it because the owner is yet to load, let the clientinit hook take care of that
             timer.create("kl:fn_queueloop", 1.66, 0, networkQueueLoop)
-        end    
+        end
     end
 end
 
-if CLIENT then    
+if CLIENT then
     --loading    
     net.receive("kl:fn_clfilerequest",function()
         local path = net.readString()
@@ -73,7 +73,7 @@ if CLIENT then
             file.asyncRead(path,function(a,status,data)
                 if status == FSASYNC.OK then
                     local fileSize = #data
-                    
+
                     networkFile("kl:fn_loadedfile",path,data,fileSize)
                 else
                     print(Color(255,0,0),"kl:fn| ",Color(255,255,255),"file [" .. path .. "] asyncRead failed with error " .. status)
@@ -85,7 +85,7 @@ if CLIENT then
             net.send()
         end
     end)
-    
+
     --saving
     net.receive("kl:fn_clfilesave",function()
         local path = net.readString()
@@ -103,70 +103,70 @@ if CLIENT then
                 file.createDir(dir)
             end
         end
-        file.write(path,data)        
+        file.write(path,data)
     end)
 elseif SERVER then
     --loading
     filenetworking = {}
     local cbfuncs = {}
-    
+
     local function loadFile(path,cbfunc)
         net.start("kl:fn_clfilerequest")
         net.writeString(path)
         net.send(owner())
-        
+
         cbfuncs[path] = cbfunc
     end
-    
+
     net.receive("kl:fn_loadedfile",function()
         local path = net.readString()
         local fileSize = net.readUInt(16)
         local data = net.readData(fileSize)
-        
+
         cbfuncs[path](data)
         cbfuncs[path] = nil
     end)
-    
+
     net.receive("kl:fn_loadedfile_missing",function()
         cbfuncs[path](nil)
         cbfuncs[path] = nil
     end)
-    
+
     --saving
-    local function saveFile(path,data)
+    local function saveFile(fpath,data)
         local fileSize = #data
-    
-        networkFile("kl:fn_clfilesave",path,data,fileSize)
+
+        networkFile("kl:fn_clfilesave",fpath,data,fileSize)
     end
-    
+
     --pre client init bullshit
     local preclientQueue = {}
-    
+
     filenetworking.loadFile = function(...)
         table.insert(preclientQueue,{
             func = loadFile,
             args = {...},
         })
     end
-    
+
     filenetworking.saveFile = function(...)
         table.insert(preclientQueue,{
             func = saveFile,
             args = {...},
         })
     end
-    
+
     hook.add("ClientInitialized","kl:fn_ownerloaded",function(p)
         if p == owner() then
             filenetworking.loadFile = loadFile
             filenetworking.saveFile = saveFile
-            
+
             for _,v in pairs(preclientQueue) do
                 v.func(unpack(v.args))
             end
-            
+
             preclientQueue = nil
-            
+
             hook.remove("ClientInitialized","kl:fn_ownerloaded")
         end
     end)

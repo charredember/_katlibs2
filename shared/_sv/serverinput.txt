@@ -4,27 +4,27 @@
 local infiniteIndexMM
 infiniteIndexMM = function(t,k)
     local newTab = {}
-    setmetatable(newTab,{["__index"]=infiniteIndexMM})
+    setmetatable(newTab,{["__index"] = infiniteIndexMM})
     t[k] = newTab
     return newTab
 end
 
 local initialized = {}
 local preClientQueue = {}
-setmetatable(preClientQueue,{["__index"]=infiniteIndexMM})
+setmetatable(preClientQueue,{["__index"] = infiniteIndexMM})
 
 local cbs = {}
-setmetatable(cbs,{["__index"]=infiniteIndexMM})
+setmetatable(cbs,{["__index"] = infiniteIndexMM})
 
 local listenedKeys = {}
-setmetatable(listenedKeys,{["__index"]=infiniteIndexMM})
+setmetatable(listenedKeys,{["__index"] = infiniteIndexMM})
 
 local function updateListenedKeys(player)
     local clKeyTabUpdate = {}
     for _,keyTab in pairs(listenedKeys[player]) do
         table.merge(clKeyTabUpdate, keyTab)
     end
-            
+
     net.start("kl:si_listen")
     net.writeUInt(#clKeyTabUpdate,7)
     for _,v in pairs(clKeyTabUpdate) do
@@ -38,7 +38,7 @@ function serverInput.addHook(p,hookKey,keyTab,f)
         if not table.hasValue(chip():getErroredPlayers()) then
             listenedKeys[p][hookKey] = keyTab
             updateListenedKeys(p)
-            
+
             for _,key in pairs(keyTab) do
                 cbs[p][key][hookKey] = f
             end
@@ -72,17 +72,17 @@ end)
 function serverInput.removeHook(p,hookKey)
     listenedKeys[p][hookKey] = nil
     updateListenedKeys(p)
-    
+
     for key,hookFuncTab in pairs(cbs[p]) do
         hookFuncTab[hookKey] = nil
         if table.count(hookFuncTab) == 0 then
             cbs[p][key] = nil
         end
     end
-    
+
     if table.count(cbs[p]) == 0 then
         cbs[p] = nil
-        
+
         net.start("kl:si_stopListen")
         net.writeBool(true)
         net.send(p)
@@ -93,7 +93,7 @@ net.receive("kl:si_key",function()
     local down = net.readBool()
     local p = net.readEntity()
     local k = net.readUInt(7)
-    
+
     if cbs[p] ~= nil and cbs[p][k] ~= nil then
         for _,func in pairs(cbs[p][k]) do
             func(k,down)

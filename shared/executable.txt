@@ -1,0 +1,168 @@
+--@name
+--@author katsu
+--@shared
+
+if not net.writeBStream then throw("katlibs:executable requires netbstream loaded before!") end
+
+--standardized data format for cross-domain executable code
+executable = class("kl:executable")
+
+DOMAIN = {
+    SV = 1,
+    CL = 2,
+    SH = 3,
+}
+
+local eid = chip():entIndex()
+local currDomain = SERVER and 1 or 2
+
+local encapsulatedData = {}
+local cachedSerializedExes = {}
+function executable:initialize()
+    cachedSerializedExes[self] = nil
+    encapsulatedData[self] = {
+        compiled = false,
+        hash = nil,
+        files = {},
+    }
+end
+
+local nopathitr = 0
+function executable:addCode(code,domain,owneronly)
+    cachedSerializedExes[self] = nil
+
+    local self_priv = encapsulatedData[self]
+    if self_priv.compiled then throw("kl:exe| cannot add to compiled exe") end
+
+    nopathitr = nopathitr + 1
+    table.insert(self_priv.files,{
+        path = string.format("nopath_ent%i_%i",eid,nopathitr),
+        code = code,
+        domain = domain,
+        owneronly = owneronly,
+    })
+end
+
+function executable:getPaths()
+    local self_priv = encapsulatedData[self]
+    local paths = {}
+
+    local files = self_priv.files
+    for _,fileData in pairs(files) do
+        table.insert(paths,fileData.path)
+    end
+    return paths
+end
+
+if CLIENT and player() == owner() then
+    function executable:addFile(path,domain,owneronly)
+        cachedSerializedExes[self] = nil
+
+        local self_priv = encapsulatedData[self]
+        if self_priv.compiled then throw("kl:exe| cannot add to compiled exe") end
+
+        if not path or not domain then throw(string.format("kl:executable| missing path or domain on file %s",path)) end
+
+        local code = file.readInGame("data/starfall/" .. path)
+        if not code then throw(string.format("ki:executable| cant find code [%s]",path)) end
+
+        table.insert(self_priv.files,{
+            path = path,
+            code = code,
+            domain = domain,
+            owneronly = owneronly,
+        })
+    end
+end
+
+function executable:cull(cull_owneronly, cull_domain)
+    cachedSerializedExes[self] = nil
+
+    local self_priv = encapsulatedData[self]
+
+    local files = table.copy(self_priv.files)
+    local count = #files
+
+    for i = count,1,-1 do
+        local fileData = files[i]
+
+        if (cull_owneronly and fileData.owneronly) or
+           (cull_domain and bit.band(cull_domain,fileData.domain) == 0) then
+            table.remove(files,i)
+        end
+    end
+
+    if table.isEmpty(files) then return end
+
+    local newFC = executable:new()
+    encapsulatedData[newFC] = {
+        compiled = self_priv.compiled,
+        cachedSerializedExes = nil,
+        hash = self_priv.hash,
+        files = files,
+    }
+
+    return newFC
+end
+
+function executable:compile()
+    local self_priv = encapsulatedData[self]
+    self_priv.compiled = true
+    self_priv.hash = crc(von.serialize(self_priv.files))
+end
+
+function executable:getHash()
+    local self_priv = encapsulatedData[self]
+    if not self_priv.compiled then throw("kl:exe| exe does not have hash until it is compiled") end
+    return self_priv.hash
+end
+
+function executable:run(remote)
+    local self_priv = encapsulatedData[self]
+    if not self_priv.compiled then throw("kl:exe| compile exe before running it") end
+
+    local hash = self_priv.hash
+
+    local files = self_priv.files
+    local count = #files
+
+    for i = 1,count do
+        local fileData = files[i]
+        if bit.band(currDomain,fileData.domain) == 0 then return end
+
+        if CLIENT and player() ~= owner() and fileData.owneronly then return end
+
+        if remote == eid then
+            local fname = SERVER and "kl:exe_" .. hash or fileData.path
+            loadstring(fileData.code,fname)()
+        else
+            hook.runRemote(entity(remote),"kl:exe_remoteLoadString",fileData.code)
+        end
+    end
+
+    if remote ~= eid then hook.runRemote(entity(remote),"kl:exe_remotefinish",hash) end
+end
+
+--free object from memory
+function executable:destroy()
+    encapsulatedData[self] = nil
+end
+
+function net.writeExecutable(exe)
+    local serializedExe = cachedSerializedExes[exe]
+
+    if not serializedExe then
+        serializedExe = von.serialize(encapsulatedData[exe])
+        cachedSerializedExes[exe] = serializedExe
+    end
+
+    net.writeBStream(serializedExe)
+end
+
+function net.readExecutable(cb)
+    local exe = executable:new()
+    net.readBStream(function(serializedExe)
+        encapsulatedData[exe] = von.deserialize(serializedExe)
+        cb(exe)
+    end)
+end

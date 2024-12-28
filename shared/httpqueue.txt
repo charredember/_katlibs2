@@ -9,33 +9,34 @@ httpQueue = {}
 
 local queued = {}
 local function callNextInQueue()
-    hook.runRemote(nil,"kl:hq_httpReqEnded")
-    if queued[1] ~= nil then //when an active request finishes (a http slot is free), check the queue to see if one is waiting
+    if queued[1] ~= nil then --when an active request finishes (a http slot is free), check the queue to see if one is waiting
         coroutine.resume(queued[1])
         table.remove(queued,1)
     end
 end
 
-hook.add("remote","kl:hq_remote",function(msgOrigin,msgOwner,msgName)
+hook.add("remote","kl:hq_remote",function(_,msgOwner,msgName,msgOrigin)
     if msgOrigin == chip() then return end
     if msgOwner ~= owner() then return end
     if msgName ~= "kl:hq_httpReqEnded" then return end
-    
+
     callNextInQueue()
 end)
 
 function httpQueue.get(url,cbSuccess,cbFail,headers)
     local co
     co = coroutine.create(function()
-        local cbSuccessEdited = function(body,length,headers,code) //wrap the http cbs to sneak in our own code at the end
-            cbSuccess(body,length,headers,code)
+        local cbSuccessEdited = function(body,length,rheaders,code) --wrap the http cbs to sneak in our own code at the end
+            cbSuccess(body,length,rheaders,code)
+            hook.runRemote(nil,"kl:hq_httpReqEnded",chip())
             callNextInQueue()
         end
 
         local cbFailEdited = function(reason)
-            if cbFail != nil then
+            if cbFail ~= nil then
                 cbFail(reason)
             end
+            hook.runRemote(nil,"kl:hq_httpReqEnded",chip())
             callNextInQueue()
         end
 

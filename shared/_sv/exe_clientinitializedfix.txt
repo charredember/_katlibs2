@@ -1,0 +1,30 @@
+--@author katsu
+--@server
+
+local hook_add = hook.add
+function hook.add(hookname,name,hookFunc)
+    if hookname ~= "ClientInitialized" then hook_add(hookname,name,hookFunc) return end
+
+    local hookSource = debug.getinfo(3).short_src:sub(4)
+    if hookSource:sub(1,7) ~= "kl:exe_" then return end
+    local hash = hookSource:sub(8)
+
+    local function hookFuncWrapper(ply,nrhash)
+        if nrhash ~= hash then return end
+        hookFunc(ply)
+    end
+    hook_add("kl:exe_ClientInitialized",name,hookFuncWrapper)
+end
+
+local hook_remove = hook.remove
+function hook.remove(hookname,name)
+    if hookname ~= "ClientInitialized" then hook_remove(hookname,name) return end
+    local hookSource = debug.getinfo(3).short_src:sub(4)
+    if hookSource:sub(1,7) ~= "kl:exe_" then return end
+
+    hook_remove("kl:exe_ClientInitialized",name)
+end
+
+net.receive("kl:exemg_clInit",function(_,ply)
+    hook.run("kl:exe_ClientInitialized",ply,net.readString())
+end)

@@ -1,0 +1,91 @@
+--@author katsu
+--@shared
+--@owneronly
+
+if not net.writeBStream then throw("katlibs:exemanagger requires executable loaded before!") end
+
+local function relayExe(ply,exe,remote)
+    net.start("kl:exemg_relay")
+    net.writeUInt(remote,13)
+    net.writeExecutable(exe)
+    net.send(ply)
+end
+
+if SERVER then
+    local cl_exes = setmetatable({},{__index = function(t,k) local nt = {} t[k] = nt return nt end})
+
+    net.receive("kl:exemg_clInit",function(_,ply)
+        hook.run("ClientInitialized",ply,true)
+    end)
+
+    net.receive("kl:exemg_relay",function()
+        local remote = net.readUInt(13)
+
+        net.readExecutable(function(exe)
+            if not isValid(entity(remote)) then return end
+
+            local sv_exe = exe:cull(false, DOMAIN.SV)
+            if sv_exe then sv_exe:run(remote) end
+            hook.run("kl:exe_ClientInitialized",owner(),exe:getHash())
+
+            local cl_exe = exe:cull(true, DOMAIN.CL)
+            if not cl_exe then return end
+
+            relayExe(nil,cl_exe,remote)
+            table.insert(cl_exes[remote],function(ply)
+                relayExe(ply,cl_exe,remote)
+            end)
+        end)
+    end)
+
+    hook.add("ClientInitialized","kl:exemg_ci",function(p)
+        for _,enttab in pairs(cl_exes) do
+            for _,func in pairs(enttab) do
+                func(p)
+            end
+        end
+    end)
+
+    hook.add("EntityRemoved","kl:exemg_er",function(e)
+        local eid = e:entIndex()
+        if cl_exes[eid] then cl_exes[eid] = nil end
+    end)
+elseif CLIENT then
+    local queue = {}
+    local queueCoroutine = coroutine.wrap(function()
+        while true do
+            if table.isEmpty(queue) then hook.remove("tick","kl:exemg_tick") coroutine.yield() end
+            local curr = queue[1]
+            table.remove(queue,1)
+
+            local remote = curr.remote
+            local exe = curr.exe
+
+            local cl_exe = exe:cull(false, DOMAIN.CL)
+            if cl_exe then cl_exe:run(remote) end
+
+            relayExe(nil,exe,remote)
+        end
+    end)
+
+    function exemanager.distributeFiles(fileTab,remote)
+        remote = remote or chip():entIndex()
+
+        local exe = executable:new(remote)
+        for i = 1,#fileTab do
+            local fileData = fileTab[i]
+
+            local path = fileData.path
+            local domain = fileData.domain
+
+            exe:addFile(path,domain,fileData.owneronly or false)
+        end
+        exe:compile()
+
+        table.insert(queue,{
+            remote = remote,
+            exe = exe,
+        })
+        hook.add("tick","kl:exemg_tick",queueCoroutine)
+    end
+end

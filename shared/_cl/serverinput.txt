@@ -16,11 +16,11 @@ net.receive("kl:si_listen",function()
     net.writeEntity(player())
     net.writeBool(hasPermission)
     net.send()
-    
+
     if hasPermission then
         local numKeys = net.readUInt(7)
-        
-        for i=1,numKeys do
+
+        for i = 1,numKeys do
             keys[net.readUInt(7)] = true
         end
 
@@ -33,7 +33,7 @@ net.receive("kl:si_listen",function()
                 net.send()
             end
         end)
-        
+
         hook.add("inputReleased","kl:si_ir",function(k)
             if keys[k] then
                 net.start("kl:si_key")

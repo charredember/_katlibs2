@@ -3,7 +3,7 @@
 
 local nullfunc = function() end
 
-local networkedEnts = setmetatable({}, {["__index"]=function(t,k) 
+local networkedEnts = setmetatable({}, {["__index"] = function(t,k)
     t[k] = {
         initialize = nullfunc,
         deinitialize = nullfunc,
@@ -11,7 +11,7 @@ local networkedEnts = setmetatable({}, {["__index"]=function(t,k)
     return t[k]
 end})
 
-local CBs = setmetatable({}, {["__index"]=function(t,k) 
+local CBs = setmetatable({}, {["__index"] = function(t,k)
     t[k] = {
         netcode = nullfunc,
         valid = nullfunc,
@@ -42,8 +42,8 @@ local function receive(type)
     local updateHash = net.readBool()
     local hash = updateHash and net.readUInt(32) or cachedVars.hash
     local updateNetcode = net.readBool()
-    local netcodeReturns = updateNetcode and ({CBs[hash].netcode(eid)} or {}) or cachedVars.netcodeReturns
     local eid = net.readUInt(13)
+    local netcodeReturns = updateNetcode and ({CBs[hash].netcode(eid)} or {}) or cachedVars.netcodeReturns
 
     networkedEnts[eid] = {
         active = false,
@@ -63,7 +63,7 @@ local function receive(type)
     if isValid(entity(eid)) then
         networkedEnts[eid]:initialize()
     end
-    
+
     lastNW[type] = {
         hash = hash,
         netcodeReturns = netcodeReturns,

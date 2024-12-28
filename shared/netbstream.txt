@@ -1,9 +1,7 @@
 --@author katsu
 --@shared
 
-local NETLIMIT_FLOOR = 1000
-local NETLIMIT_CEILING = 8333
-
+local NETLIMIT_FLOOR = 1000 --send at least this much per message
 local old_net_send = net.send
 
 local sendQueue = {}
@@ -15,17 +13,17 @@ function net.writeBStream(data,compress)
     net.send = function(ply)
         local dataSize = #data
         local dataPtr = 0
-    
+
         local co = coroutine.wrap(function()
             repeat
-                local bytesLeft = math.clamp(net.getBytesLeft(),0,NETLIMIT_CEILING)
+                local bytesLeft = net.getBytesLeft() / 1.2
                 while bytesLeft < NETLIMIT_FLOOR do coroutine.yield() end
-    
+
                 local startP = dataPtr + 1
                 local chunkSize = math.clamp(dataSize-dataPtr,0,bytesLeft)
                 dataPtr = dataPtr + chunkSize
                 local endP = dataPtr
-                
+
                 local finalMsg = (dataPtr == dataSize)
 
                 local chunk = data:sub(startP,endP)
@@ -34,14 +32,14 @@ function net.writeBStream(data,compress)
                 net.writeData(chunk,chunkSize)
                 net.writeBool(finalMsg)
                 old_net_send(ply)
-    
+
                 coroutine.yield()
-            until(finalMsg)
+            until (finalMsg)
 
             table.remove(sendQueue,1)
         end)
         table.insert(sendQueue,co)
-        
+
         hook.add("tick","kl:bns_sendQueue",function()
             if table.isEmpty(sendQueue) then hook.remove("tick","kl:bns_sendQueue") return end
             sendQueue[1]()
@@ -57,15 +55,15 @@ local receiveBuffer = {}
 local receiveQueue = {}
 function net.readBStream(cbFunc)
     local compressed = net.readBool()
-    
+
     i = i + 1
-    local hookKey = string.format("kl:bns_receive_%i",i)
+
     table.insert(receiveQueue,coroutine.wrap(function()
         local data
         repeat
             data = receiveBuffer[1]
             coroutine.yield()
-        until(data)
+        until (data)
         table.remove(receiveBuffer,1)
 
         if compressed then data = bit.decompress(data) end
@@ -73,7 +71,7 @@ function net.readBStream(cbFunc)
 
         table.remove(receiveQueue,1)
     end))
-    
+
     hook.add("tick","kl:bns_receive",function()
         if table.isEmpty(receiveQueue) then hook.remove("tick","kl:bns_receive") return end
         receiveQueue[1]()

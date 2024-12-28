@@ -73,7 +73,6 @@ end
 
 function p2mmanager:mergeSubstructure(substructureKey,props)
     --save prop data and push to p2m stack
-    
 end
 
 function p2mmanager:separateSubstructure(substructureKey)
@@ -88,8 +87,8 @@ function p2mmanager:build()
     end
 
     local controllers = {}
-    setmetatable(controllers, {["__index"]=function(t,k) local newTab = {} t[k] = newTab return newTab end})
-    
+    setmetatable(controllers, {["__index"] = function(t,k) local newTab = {} t[k] = newTab return newTab end})
+
     for _,substructure in pairs(self.substructures) do
         for mat,matTab in pairs(substructure) do
             for color,data in pairs(matTab) do

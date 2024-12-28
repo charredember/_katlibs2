@@ -1,0 +1,33 @@
+--@author katsu
+--@shared
+--@include _katlibs2\shared\_sv\exe_clientinitializedfix.txt
+
+if executable then print(Color(255,0,0),"kl:exeremote| ",Color(255,255,255),"exeremote is designed to be lightweight and standalone and does not require executable on the same chip") end
+
+exeremote = {}
+
+local users = {[owner():getSteamID()] = true}
+function exeremote.addUser(steamid)
+    users[steamid] = true
+end
+
+function exeremote.removeUser(steamid)
+    users[steamid] = nil
+end
+
+local remoteHooks = {
+    ["kl:exe_remoteLoadString"] = function(code)
+        loadstring(code)
+    end,
+    ["kl:exe_remotefinish"] = function(hash)
+        net.start("kl:exe_clInit")
+        net.writeString(hash)
+        net.send()
+    end,
+}
+
+hook.add("remote","kl:exe_remote",function(_, msgOwner, msgName, ...)
+    if not users[msgOwner:getSteamID()] then return end
+    local remoteHook = remoteHooks[msgName]
+    if remoteHook then remoteHook(...) end
+end)

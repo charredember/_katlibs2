@@ -19,7 +19,7 @@ function timeutils.newDTtween()
 
         if beforeDelayDT >= delay then
             if DT <= length then
-                local up = DT/length
+                local up = DT / length
                 func(up)
                 return false
             else
@@ -38,7 +38,7 @@ function timeutils.newEdgeTrigger()
 
     local risingFuncCalled = false
     local fallingFuncCalled = false
-    return function(length,delay,risingEdgeFunc,fallingEdgeFunc)  
+    return function(length,delay,risingEdgeFunc,fallingEdgeFunc)
         if fallingEdgeFunc == nil then
             fallingEdgeFunc = risingEdgeFunc
             risingEdgeFunc = delay
@@ -76,7 +76,7 @@ function timeutils.newTickDivider()
 
         local time = timer.systime()
         local DT = time - savedTime
-        
+
         if DT > length then
             func()
             savedTime = time

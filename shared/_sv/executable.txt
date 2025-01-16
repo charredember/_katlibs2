@@ -1,0 +1,28 @@
+--@author katsu
+--@server
+
+local function run(files,hash,remoteEnt)
+    local count = #files
+
+    for i = 1,count do
+        local fileData = files[i]
+        if bit.band(1,fileData.domain) == 0 then return end
+
+        local fname = string.format("kl:exe_%s|%s" ,hash,fileData.path)
+        if not remoteEnt then
+            loadstring(fileData.code,fname)()
+        else
+            hook.runRemote(remoteEnt,"kl:exe_remoteLoadString",fileData.code,fname,hash)
+        end
+    end
+
+    net.start("kl:exe_svInit")
+    net.writeString(hash)
+    net.send()
+
+    if remoteEnt then hook.runRemote(remoteEnt,"kl:exe_remoteFinish",hash) end
+end
+
+return {
+    run = run
+}

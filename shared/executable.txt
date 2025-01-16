@@ -1,11 +1,17 @@
 --@name
 --@author katsu
 --@shared
+--@include _katlibs2/shared/_sv/exe_clientinitializedfix.txt
+--@include _katlibs2/shared/_cl/executable.txt
+--@include _katlibs2/shared/_sv/executable.txt
 
 if not net.writeBStream then throw("katlibs:executable requires netbstream loaded before!") end
+if SERVER then require("_katlibs2/shared/_sv/exe_clientinitializedfix.txt") end
 
 --standardized data format for cross-domain executable code
 executable = class("kl:executable")
+local priv = require(string.format("_katlibs2/shared/_%s/executable.txt",SERVER and "sv" or "cl"))
+local run = priv.run
 
 DOMAIN = {
     SV = 1,
@@ -14,7 +20,6 @@ DOMAIN = {
 }
 
 local eid = chip():entIndex()
-local currDomain = SERVER and 1 or 2
 
 local encapsulatedData = {}
 local cachedSerializedExes = {}
@@ -117,30 +122,16 @@ function executable:getHash()
     return self_priv.hash
 end
 
-function executable:run(remote)
+function executable:run(remoteEnt)
+    if remoteEnt == chip() then remoteEnt = nil end
+
     local self_priv = encapsulatedData[self]
     if not self_priv.compiled then throw("kl:exe| compile exe before running it") end
 
     local hash = self_priv.hash
-
     local files = self_priv.files
-    local count = #files
 
-    for i = 1,count do
-        local fileData = files[i]
-        if bit.band(currDomain,fileData.domain) == 0 then return end
-
-        if CLIENT and player() ~= owner() and fileData.owneronly then return end
-
-        if remote == eid then
-            local fname = SERVER and "kl:exe_" .. hash or fileData.path
-            loadstring(fileData.code,fname)()
-        else
-            hook.runRemote(entity(remote),"kl:exe_remoteLoadString",fileData.code)
-        end
-    end
-
-    if remote ~= eid then hook.runRemote(entity(remote),"kl:exe_remotefinish",hash) end
+    run(files,hash,remoteEnt)
 end
 
 --free object from memory

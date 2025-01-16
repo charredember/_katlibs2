@@ -5,10 +5,15 @@ local NETLIMIT_FLOOR = 1000 --send at least this much per message
 local old_net_send = net.send
 
 local sendQueue = {}
+local ID = -1
 function net.writeBStream(data,compress)
     if compress == nil then compress = true end
     if compress then data = bit.compress(data) end
     net.writeBool(compress)
+
+    ID = ID + 1
+    local streamID = ID
+    net.writeUInt(streamID,32)
 
     net.send = function(ply)
         local dataSize = #data
@@ -16,8 +21,12 @@ function net.writeBStream(data,compress)
 
         local co = coroutine.wrap(function()
             repeat
-                local bytesLeft = net.getBytesLeft() / 1.2
-                while bytesLeft < NETLIMIT_FLOOR do coroutine.yield() end
+                local bytesLeft
+                repeat 
+                    bytesLeft = math.floor(net.getBytesLeft() / 1.2)
+                    local awaitNet = (bytesLeft < NETLIMIT_FLOOR)
+                    if awaitNet then coroutine.yield() end
+                until (not awaitNet)
 
                 local startP = dataPtr + 1
                 local chunkSize = math.clamp(dataSize-dataPtr,0,bytesLeft)
@@ -27,10 +36,12 @@ function net.writeBStream(data,compress)
                 local finalMsg = (dataPtr == dataSize)
 
                 local chunk = data:sub(startP,endP)
+
                 net.start("kl:bns")
                 net.writeUInt(chunkSize,14)
                 net.writeData(chunk,chunkSize)
                 net.writeBool(finalMsg)
+                if finalMsg then net.writeUInt(streamID,32) end
                 old_net_send(ply)
 
                 coroutine.yield()
@@ -50,42 +61,49 @@ function net.writeBStream(data,compress)
     end
 end
 
-local i = 0
+local receivers = {}
+local function checkReceives()
+    for _,receiver in pairs(receivers) do
+        receiver()
+    end
+end
+
 local receiveBuffer = {}
-local receiveQueue = {}
 function net.readBStream(cbFunc)
     local compressed = net.readBool()
+    local streamID = net.readUInt(32)
 
-    i = i + 1
-
-    table.insert(receiveQueue,coroutine.wrap(function()
+    receivers[streamID] = coroutine.wrap(function()
         local data
         repeat
-            data = receiveBuffer[1]
-            coroutine.yield()
+            data = receiveBuffer[streamID]
+            if not data then coroutine.yield() end
         until (data)
-        table.remove(receiveBuffer,1)
+
+        receiveBuffer[streamID] = nil
 
         if compressed then data = bit.decompress(data) end
         cbFunc(data)
 
-        table.remove(receiveQueue,1)
-    end))
-
-    hook.add("tick","kl:bns_receive",function()
-        if table.isEmpty(receiveQueue) then hook.remove("tick","kl:bns_receive") return end
-        receiveQueue[1]()
+        receivers[streamID] = nil
     end)
+
+    checkReceives()
 end
 
 local chunks = {}
 net.receive("kl:bns",function()
     local chunkSize = net.readUInt(14)
+
     local chunk = net.readData(chunkSize)
     table.insert(chunks,chunk)
 
     local finalMsg = net.readBool()
     if not finalMsg then return end
-    table.insert(receiveBuffer,table.concat(chunks))
+
+    local streamID = net.readUInt(32)
+    receiveBuffer[streamID] = table.concat(chunks)
+    checkReceives()
+
     chunks = {}
 end)

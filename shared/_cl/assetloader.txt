@@ -170,5 +170,3 @@ function assetloader.loadFromHTTPZip(key,url,finishedCB,threadCB)
     activeRequests[key] = co
     co()
 end
-
-

@@ -1,0 +1,46 @@
+--@author katsu
+--@client
+
+local initializedSVExes = {}
+local awaitSVBuffer = {}
+local function run(files,hash,remoteEnt)
+    awaitSVBuffer[hash] = function()
+        local count = #files
+
+        for i = 1,count do
+            local fileData = files[i]
+            if bit.band(2,fileData.domain) == 0 then return end
+            if player() ~= owner() and fileData.owneronly then return end
+
+            local fname = string.format("kl:exe_%s|%s" ,hash,fileData.path)
+            if not remoteEnt then
+                loadstring(fileData.code,fname)()
+            else
+                hook.runRemote(remoteEnt,"kl:exe_remoteLoadString",fileData.code,fname,hash)
+            end
+        end
+
+        if not remoteEnt then
+            net.start("kl:exe_clInit")
+            net.writeString(hash)
+            net.send()
+        else
+            hook.runRemote(remoteEnt,"kl:exe_remoteFinish",hash)
+        end
+
+        awaitSVBuffer[hash] = nil
+    end
+
+    if initializedSVExes[hash] then awaitSVBuffer[hash]() end
+end
+
+net.receive("kl:exe_svInit",function()
+    local hash = net.readString()
+    initializedSVExes[hash] = true
+    local bufferedCLCode = awaitSVBuffer[hash]
+    if bufferedCLCode then bufferedCLCode() end
+end)
+
+return {
+    run = run
+}

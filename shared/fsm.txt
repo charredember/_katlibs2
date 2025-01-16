@@ -45,6 +45,7 @@ function fsm:initialize()
     self.stateTable = {}
     self.currState = nil
     self.currStateName = nil
+    self.locked = false
 
     self._unnamedTempHooks = table.copy(emptyTempHooksTab)
     self._tempHooks = table.copy(emptyTempHooksTab)
@@ -63,7 +64,12 @@ function fsm:setStateTable(tab)
     end
 end
 
+function fsm:setLocked(bool)
+    self.locked = bool
+end
+
 function fsm:setState(stateName,...)
+    if self.locked then return end
     if self.stateTable == nil then throw("kl:fsm| no state table!") end
 
     --run last state exit cbs
@@ -101,9 +107,11 @@ function fsm:setState(stateName,...)
         if self.stateChangeCB ~= nil then
             self.stateChangeCB(stateName)
         end
-    else
-        throw("kl:fsm| state '" .. stateName .. "' doesnt exist!")
     end
+end
+
+function fsm:getState()
+    return self.currStateName
 end
 
 function fsm:onStateChange(cb)

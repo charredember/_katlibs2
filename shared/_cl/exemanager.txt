@@ -3,19 +3,16 @@
 
 local loaded = {}
 net.receive("kl:exemg_relay",function()
-    local remote = net.readUInt(13)
+    local remoteID = net.readUInt(13)
 
     net.readExecutable(function(exe)
         local hash = exe:getHash()
         if loaded[hash] then return end
         loaded[hash] = true
 
-        if not isValid(entity(remote)) then return end
-
-        exe:run(remote)
-
-        net.start("kl:exemg_clInit")
-        net.writeString(exe:getHash())
-        net.send()
+        local remoteEnt = entity(remoteID)
+        if not isValid(remoteEnt) then return end
+        exe:run(remoteEnt)
+        exe:destroy()
     end)
 end)

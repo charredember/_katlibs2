@@ -4,9 +4,9 @@
 
 if not net.writeBStream then throw("katlibs:exemanagger requires executable loaded before!") end
 
-local function relayExe(ply,exe,remote)
+local function relayExe(ply,exe,remoteID)
     net.start("kl:exemg_relay")
-    net.writeUInt(remote,13)
+    net.writeUInt(remoteID,13)
     net.writeExecutable(exe)
     net.send(ply)
 end
@@ -14,64 +14,53 @@ end
 if SERVER then
     local cl_exes = setmetatable({},{__index = function(t,k) local nt = {} t[k] = nt return nt end})
 
-    net.receive("kl:exemg_clInit",function(_,ply)
-        hook.run("ClientInitialized",ply,true)
-    end)
-
     net.receive("kl:exemg_relay",function()
-        local remote = net.readUInt(13)
+        local remoteID = net.readUInt(13)
+        local remoteEnt = entity(remoteID)
+        if not isValid(remoteEnt) then return end
 
         net.readExecutable(function(exe)
-            if not isValid(entity(remote)) then return end
-
             local sv_exe = exe:cull(false, DOMAIN.SV)
-            if sv_exe then sv_exe:run(remote) end
-            hook.run("kl:exe_ClientInitialized",owner(),exe:getHash())
+            if sv_exe then sv_exe:run(remoteEnt) sv_exe:destroy() end
 
             local cl_exe = exe:cull(true, DOMAIN.CL)
             if not cl_exe then return end
 
-            relayExe(nil,cl_exe,remote)
-            table.insert(cl_exes[remote],function(ply)
-                relayExe(ply,cl_exe,remote)
-            end)
+            relayExe(nil,cl_exe,remoteID)
+            table.insert(cl_exes[remoteID],cl_exe)
         end)
     end)
 
     hook.add("ClientInitialized","kl:exemg_ci",function(p)
-        for _,enttab in pairs(cl_exes) do
-            for _,func in pairs(enttab) do
-                func(p)
+        for remoteID,enttab in pairs(cl_exes) do
+            for _,exe in pairs(enttab) do
+                relayExe(ply,exe,remoteID)
             end
         end
     end)
 
     hook.add("EntityRemoved","kl:exemg_er",function(e)
         local eid = e:entIndex()
-        if cl_exes[eid] then cl_exes[eid] = nil end
+        local clExesForEnt = cl_exes[eid]
+        if not clExesForEnt then return end
+
+        for _,exe in pairs(clExesForEnt) do
+            exe:destroy()
+        end
+        cl_exes[eid] = nil
     end)
 elseif CLIENT then
+    local exes_awaitingSV = {}
     local queue = {}
-    local queueCoroutine = coroutine.wrap(function()
-        while true do
-            if table.isEmpty(queue) then hook.remove("tick","kl:exemg_tick") coroutine.yield() end
-            local curr = queue[1]
-            table.remove(queue,1)
+    local function queueThink()
+        if table.isEmpty(queue) then hook.remove("tick","kl:exemg_tick") return end
+        queue[1]()
+    end
 
-            local remote = curr.remote
-            local exe = curr.exe
+    function exemanager.distributeFiles(fileTab,remoteEnt)
+        local remoteID = remoteEnt and remoteEnt:entIndex() or chip():entIndex()
 
-            local cl_exe = exe:cull(false, DOMAIN.CL)
-            if cl_exe then cl_exe:run(remote) end
-
-            relayExe(nil,exe,remote)
-        end
-    end)
-
-    function exemanager.distributeFiles(fileTab,remote)
-        remote = remote or chip():entIndex()
-
-        local exe = executable:new(remote)
+        local exe = executable:new(remoteID)
         for i = 1,#fileTab do
             local fileData = fileTab[i]
 
@@ -82,10 +71,19 @@ elseif CLIENT then
         end
         exe:compile()
 
-        table.insert(queue,{
-            remote = remote,
-            exe = exe,
-        })
-        hook.add("tick","kl:exemg_tick",queueCoroutine)
+        table.insert(queue,function()
+            local cl_exe = exe:cull(false, DOMAIN.CL)
+            local remoteEnt = entity(remoteID)
+            if cl_exe and isValid(remoteEnt) then
+                cl_exe:run(remoteEnt)
+                cl_exe:destroy()
+            end
+
+            relayExe(nil,exe,remoteID)
+            exe:destroy()
+
+            table.remove(queue,1)
+        end)
+        hook.add("tick","kl:exemg_tick",queueThink)
     end
 end

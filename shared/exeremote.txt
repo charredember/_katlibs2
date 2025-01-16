@@ -1,10 +1,13 @@
 --@author katsu
 --@shared
---@include _katlibs2\shared\_sv\exe_clientinitializedfix.txt
-
+--@include _katlibs2/shared/_sv/exe_clientinitializedfix.txt
+if SERVER then require("_katlibs2/shared/_sv/exe_clientinitializedfix.txt") end
 if executable then print(Color(255,0,0),"kl:exeremote| ",Color(255,255,255),"exeremote is designed to be lightweight and standalone and does not require executable on the same chip") end
 
 exeremote = {}
+local disabled = false
+
+require = function() end
 
 local users = {[owner():getSteamID()] = true}
 function exeremote.addUser(steamid)
@@ -15,11 +18,24 @@ function exeremote.removeUser(steamid)
     users[steamid] = nil
 end
 
+function exeremote.disable(bool)
+    disabled = bool
+end
+
+local codeBuffer = {}
 local remoteHooks = {
-    ["kl:exe_remoteLoadString"] = function(code)
-        loadstring(code)
+    ["kl:exe_remoteLoadString"] = function(code,fName)
+        table.insert(codeBuffer,loadstring(code,fName))
     end,
-    ["kl:exe_remotefinish"] = function(hash)
+    ["kl:exe_remoteFinish"] = function(hash)
+        for _,func in pairs(codeBuffer) do
+            func()
+        end
+        codeBuffer = {}
+
+        hook.run("kl:exe_remoteLoaded",hash)
+
+        if SERVER then return end
         net.start("kl:exe_clInit")
         net.writeString(hash)
         net.send()
@@ -27,6 +43,7 @@ local remoteHooks = {
 }
 
 hook.add("remote","kl:exe_remote",function(_, msgOwner, msgName, ...)
+    if disabled then return end
     if not users[msgOwner:getSteamID()] then return end
     local remoteHook = remoteHooks[msgName]
     if remoteHook then remoteHook(...) end

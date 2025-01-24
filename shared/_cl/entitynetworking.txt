@@ -46,16 +46,11 @@ local function receive(type)
     local netcodeReturns = updateNetcode and ({CBs[hash].netcode(eid)} or {}) or cachedVars.netcodeReturns
 
     networkedEnts[eid] = {
-        active = false,
         initialize = function(self)
-            if self.active then return end
-            self.active = true
             CBs[hash].valid(eid,unpack(netcodeReturns))
         end,
         deinitialize = function(self)
-            if self.active then
-                CBs[hash].removed(eid,unpack(netcodeReturns))
-            end
+            CBs[hash].removed(eid,unpack(netcodeReturns))
             networkedEnts[eid] = nil
         end
     }

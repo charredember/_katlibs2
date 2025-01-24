@@ -2,7 +2,7 @@
 --@shared
 --@owneronly
 
-if not net.writeBStream then throw("katlibs:exemanagger requires executable loaded before!") end
+if not net.writeBStream then throw("katlibs:exemanager requires executable loaded before!") end
 
 local function relayExe(ply,exe,remoteID)
     net.start("kl:exemg_relay")
@@ -50,7 +50,6 @@ if SERVER then
         cl_exes[eid] = nil
     end)
 elseif CLIENT then
-    local exes_awaitingSV = {}
     local queue = {}
     local function queueThink()
         if table.isEmpty(queue) then hook.remove("tick","kl:exemg_tick") return end
@@ -73,7 +72,7 @@ elseif CLIENT then
 
         table.insert(queue,function()
             local cl_exe = exe:cull(false, DOMAIN.CL)
-            local remoteEnt = entity(remoteID)
+            remoteEnt = entity(remoteID)
             if cl_exe and isValid(remoteEnt) then
                 cl_exe:run(remoteEnt)
                 cl_exe:destroy()
@@ -85,5 +84,9 @@ elseif CLIENT then
             table.remove(queue,1)
         end)
         hook.add("tick","kl:exemg_tick",queueThink)
+    end
+
+    function exemanager.parseMainFile(mainFile)
+        local
     end
 end

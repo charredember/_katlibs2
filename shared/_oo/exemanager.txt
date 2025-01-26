@@ -85,8 +85,9 @@ elseif CLIENT then
         end)
         hook.add("tick","kl:exemg_tick",queueThink)
     end
-
+--[[
     function exemanager.parseMainFile(mainFile)
         local
     end
+    ]]
 end

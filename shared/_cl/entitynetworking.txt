@@ -46,12 +46,26 @@ local function receive(type)
     local netcodeReturns = updateNetcode and ({CBs[hash].netcode(eid)} or {}) or cachedVars.netcodeReturns
 
     networkedEnts[eid] = {
+        firstTimeInit = true,
         initialize = function(self)
-            CBs[hash].valid(eid,unpack(netcodeReturns))
+            local function doInit()
+                CBs[hash].valid(eid,self.firstTimeInit,unpack(netcodeReturns))
+                self.firstTimeInit = false
+            end
+        
+            if isValid(entity(eid)) then doInit() return end
+
+            local hookKey = "kl:en_awaitValid_"..tostring(eid)
+            hook.add("tick",hookKey,function()
+                if not isValid(entity(eid)) then return end
+                doInit()
+                hook.remove("tick",hookKey)
+            end)
         end,
         deinitialize = function(self)
             CBs[hash].removed(eid,unpack(netcodeReturns))
             networkedEnts[eid] = nil
+            hook.remove("tick","kl:en_awaitValid_"..tostring(eid))
         end
     }
 

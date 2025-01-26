@@ -2,11 +2,6 @@
 --@shared
 --@owneronly
 
---[[
-library only handles up to 8.3 kb files (netcode doesnt stream/chunk)
---TODO: use new netbstream library to allow this library to load massive files
-]]
-
 if not net.writeBStream then throw("katlibs:filenetworking requires netbstream loaded before!") end
 
 local function networkFile(msgName,fpath,data)

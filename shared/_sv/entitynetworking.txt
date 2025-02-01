@@ -196,6 +196,10 @@ local networkedEnts = {
         local entTab = self.entLookup[ent]
         if not entTab then return false end
 
+        net.start("kl:en_er")
+        net.writeUInt(ent:entIndex(),13)
+        net.send()
+
         local private = entTab.private
         local hash = entTab.hash
 
@@ -274,8 +278,5 @@ function entitynetworking.send(players,key,e)
 end
 
 hook.add("EntityRemoved","kl:en_er",function(ent)
-    net.start("kl:en_er")
-    net.writeUInt(ent:entIndex(),13)
-    net.send()
     networkedEnts:removeIfExists(ent)
 end)

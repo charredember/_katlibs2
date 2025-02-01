@@ -28,7 +28,7 @@ local hashes = setmetatable({}, {["__index"] = function(t,k)
 end})
 
 ------------------------------------------------------------------------
-------- queue 
+------- queue
 local nwQueue = {
     public = {},
     private = {},
@@ -274,5 +274,8 @@ function entitynetworking.send(players,key,e)
 end
 
 hook.add("EntityRemoved","kl:en_er",function(ent)
+    net.start("kl:en_er")
+    net.writeUInt(ent:entIndex(),13)
+    net.send()
     networkedEnts:removeIfExists(ent)
 end)

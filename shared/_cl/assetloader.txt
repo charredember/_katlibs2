@@ -82,6 +82,7 @@ net.receive("kl:al_relayFiles",function()
             break
         else
             filePaths[fileName] = filePath
+            rawData[fileName] = file.readTemp(actualFileName)
         end
     end
 

@@ -11,9 +11,9 @@ local function networkFile(msgName,fpath,data)
     net.send(owner())
 end
 
-if SERVER then
-    filenetworking = {}
+filenetworking = {}
 
+if SERVER then
     local cbfuncs = {}
 
     local function loadFile(path,cbfunc)
@@ -26,21 +26,20 @@ if SERVER then
 
     net.receive("kl:fn_loadedfile",function()
         local path = net.readString()
-        local data = net.readBStream(function(data)
+        net.readBStream(function(data)
             cbfuncs[path](data)
             cbfuncs[path] = nil
         end)
     end)
 
     net.receive("kl:fn_loadedfile_missing",function()
+        local path = net.readString()
         cbfuncs[path](nil)
         cbfuncs[path] = nil
     end)
 
     --saving
     local function saveFile(fpath,data)
-        local fileSize = #data
-
         networkFile("kl:fn_clfilesave",fpath,data)
     end
 
@@ -76,14 +75,11 @@ if SERVER then
         end
     end)
 elseif CLIENT then
-    --loading    
-    net.receive("kl:fn_clfilerequest",function()
-        local path = net.readString()
+    --loading
+    function filenetworking.loadFile(path)
         if file.exists(path) then
             file.asyncRead(path,function(a,status,data)
                 if status == FSASYNC.OK then
-                    local fileSize = #data
-
                     networkFile("kl:fn_loadedfile",path,data)
                 else
                     print(Color(255,0,0),"kl:fn| ",Color(255,255,255),"file [" .. path .. "] asyncRead failed with error " .. status)
@@ -94,24 +90,33 @@ elseif CLIENT then
             net.start("kl:fn_loadedfile_missing")
             net.send()
         end
+    end
+
+    net.receive("kl:fn_clfilerequest",function()
+        local path = net.readString()
+        filenetworking.loadFile(path)
     end)
 
     --saving
+    function filenetworking.saveFile(path,data)
+        if file.exists(path) then
+            print(Color(255,0,0),"kl:fn| ",Color(255,255,255),"overwriting [" .. path .. "]")
+        else
+            print(Color(255,0,0),"kl:fn| ",Color(255,255,255),"creating new file [" .. path .. "]")
+
+            local dir = string.match(path,".+/")
+
+            if dir ~= nil and not file.isDir(dir) then
+                file.createDir(dir)
+            end
+        end
+        file.write(path,data)
+    end
+
     net.receive("kl:fn_clfilesave",function()
         local path = net.readString()
-        local data = net.readBStream(function(data)
-            if file.exists(path) then
-                print(Color(255,0,0),"kl:fn| ",Color(255,255,255),"overwriting [" .. path .. "]")
-            else
-                print(Color(255,0,0),"kl:fn| ",Color(255,255,255),"creating new file [" .. path .. "]")
-    
-                local dir = string.match(path,".+/")
-    
-                if dir ~= nil and not file.isDir(dir) then
-                    file.createDir(dir)
-                end
-            end
-            file.write(path,data)
+        net.readBStream(function(data)
+            filenetworking.saveFile(path,data)
         end)
     end)
 end

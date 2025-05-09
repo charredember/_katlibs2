@@ -1,4 +1,3 @@
---@name
 --@author katsu
 --@shared
 --@include _katlibs2/shared/_sv/exe_clientinitializedfix.txt

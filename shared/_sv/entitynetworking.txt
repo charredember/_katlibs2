@@ -74,11 +74,12 @@ local function refreshQueue()
                     end
 
                     net.writeBool(updateNetcode)
+                    net.writeUInt(ent:entIndex(),13)
+
                     if updateNetcode then
                         nwTab.cb(unpack(varArgs))
                     end
 
-                    net.writeUInt(ent:entIndex(),13)
                     net.send(entTab.players)
                 end
                 table.remove(queue,1)

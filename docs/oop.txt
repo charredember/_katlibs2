@@ -1,0 +1,19 @@
+--[[
+    oop base with inheritance and simple reflection
+
+    [library oop]
+    type oop.class(string name, class inheritedClass)
+    type oop.class(string name)
+
+    [type]:
+        [methods]:
+            string type.getClassName()
+            bool type.isClass(type possibleParent)
+            void constructor(function constructor) => constructor(self,...)
+            object type.new(...)
+
+    [object]:
+        [methods]:
+            string object:getClassName()
+            bool object:isClass(type possibleParent)
+]]

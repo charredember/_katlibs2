@@ -17,7 +17,7 @@ function assetloader.loadFromZip(zipdata,threaded)
                 table.add(assetloader.assetPaths,filePaths)
                 return filePaths,rawData -- end of zip
             else
-                throw("katlib:assetloader| zip is evil?!")
+                error("katlib:assetloader| zip is evil?!")
             end
         end
 
@@ -25,7 +25,7 @@ function assetloader.loadFromZip(zipdata,threaded)
 
         local compressionMethod = stream:readUInt16()
         if compressionMethod ~= 0 then
-            throw("katlib:assetloader| zip is compressed!")
+            error("katlib:assetloader| zip is compressed!")
         end
 
         stream:skip(4) --skip modify time(2) + modify date(2)

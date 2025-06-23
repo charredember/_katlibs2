@@ -1,0 +1,29 @@
+if not oop then error("kl:oopfsm requires oop loaded before!") end
+
+fsm = oop.new("kat_fsm")
+
+fsm.constructor(function(self,states)
+    local currentState = nil
+    local currentStateName = ""
+
+    self.setState = function(_,newStateName,...)
+        if currentState then currentState:onExit() end
+        local newStateObj = states[newStateName]
+        if not newStateObj then error(string.format("kl:fsm| State %s does not exist.")) end
+
+        currentStateName = newStateName
+        currentState = newStateObj
+        newStateObj:onEnter(...)
+    end
+
+    self.getState = function(_)
+        return currentStateName
+    end
+end)
+
+fsm_state = {}
+    return {
+        onEnter = function() end,
+        onExit = function() end,
+    }
+end

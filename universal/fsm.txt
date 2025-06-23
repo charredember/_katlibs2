@@ -70,7 +70,7 @@ end
 
 function fsm:setState(stateName,...)
     if self.locked then return end
-    if self.stateTable == nil then throw("kl:fsm| no state table!") end
+    if self.stateTable == nil then error("kl:fsm| no state table!") end
 
     --run last state exit cbs
     if #self._exitCBs > 0 then

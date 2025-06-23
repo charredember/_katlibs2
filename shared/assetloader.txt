@@ -4,7 +4,7 @@
 --@include _katlibs2/shared/_cl/assetloader.txt
 
 if CLIENT then
-    if not httpQueue then throw("katlibs:assetloader requires httpQueue loaded before!") end
+    if not httpQueue then error("kl:assetloader requires httpQueue loaded before!") end
 
     if permissionManager then permissionManager.setupPerms({"file.writeTemp"}) end
     assetloader = {}

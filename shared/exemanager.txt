@@ -3,7 +3,7 @@
 --@include _katlibs2/shared/_cl/exemanager.txt
 
 --manager for executable data format. automatically distributes files to chip sv and cl as requested
-if not net.writeBStream then throw("katlibs:exemanager requires netbstream loaded before!") end
+if not net.writeBStream then error("kl:exemanager requires netbstream loaded before!") end
 
 exemanager = {
     distributeFiles = function() end,

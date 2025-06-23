@@ -5,7 +5,7 @@
     ||WIP, NOT IN A WORKING STATE||
 
     data format
-    
+
     self.substructures = {
         ["substructurekey1"] = {
             ["material1"] = {
@@ -42,7 +42,7 @@
 ]]
 
 if filenetworking == nil then
-    throw("katlibs:multiholo requires filenetworking loaded before!")
+    error("kl:multiholo requires filenetworking loaded before!")
 end
 
 p2mmanager = class("katlib_p2mmanager")

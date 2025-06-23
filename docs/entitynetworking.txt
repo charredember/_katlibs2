@@ -1,0 +1,21 @@
+--[[
+SV:
+function entitynetworking.setNetcode(key,netcodeCB,size)
+    CB => nwTab.cb(unpack(varArgs))
+
+function entitynetworking.setNetcodeArgs(key,...)
+
+function entitynetworking.broadcast(key,e)
+
+function entitynetworking.send(players,key,e)
+    
+CL:
+function entitynetworking.setNetcode(key,CB)
+    CB => function(eid) returns here go to init cb vararg
+
+function entitynetworking.setInitializedCB(key,CB)
+    CB => function(eid,firstTimeInit,...)
+
+function entitynetworking.setRemovedCB(key,CB)
+    CB => function(eid)
+]]

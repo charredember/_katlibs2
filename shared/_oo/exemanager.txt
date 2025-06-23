@@ -2,7 +2,7 @@
 --@shared
 --@owneronly
 
-if not net.writeBStream then throw("katlibs:exemanager requires executable loaded before!") end
+if not net.writeBStream then error("kl:exemanager requires executable loaded before!") end
 
 local function relayExe(ply,exe,remoteID)
     net.start("kl:exemg_relay")

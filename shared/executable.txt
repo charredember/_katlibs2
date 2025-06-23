@@ -4,7 +4,7 @@
 --@include _katlibs2/shared/_cl/executable.txt
 --@include _katlibs2/shared/_sv/executable.txt
 
-if not net.writeBStream then throw("katlibs:executable requires netbstream loaded before!") end
+if not net.writeBStream then error("kl:executable requires netbstream loaded before!") end
 if SERVER then require("_katlibs2/shared/_sv/exe_clientinitializedfix.txt") end
 
 --standardized data format for cross-domain executable code
@@ -36,7 +36,7 @@ function executable:addCode(code,domain,owneronly)
     cachedSerializedExes[self] = nil
 
     local self_priv = encapsulatedData[self]
-    if self_priv.compiled then throw("kl:exe| cannot add to compiled exe") end
+    if self_priv.compiled then error("kl:exe| cannot add to compiled exe") end
 
     nopathitr = nopathitr + 1
     table.insert(self_priv.files,{
@@ -63,12 +63,12 @@ if CLIENT and player() == owner() then
         cachedSerializedExes[self] = nil
 
         local self_priv = encapsulatedData[self]
-        if self_priv.compiled then throw("kl:exe| cannot add to compiled exe") end
+        if self_priv.compiled then error("kl:exe| cannot add to compiled exe") end
 
-        if not path or not domain then throw(string.format("kl:executable| missing path or domain on file %s",path)) end
+        if not path or not domain then error(string.format("kl:executable| missing path or domain on file %s",path)) end
 
         local code = file.readInGame("data/starfall/" .. path)
-        if not code then throw(string.format("ki:executable| cant find code [%s]",path)) end
+        if not code then error(string.format("ki:executable| cant find code [%s]",path)) end
 
         table.insert(self_priv.files,{
             path = path,
@@ -117,7 +117,7 @@ end
 
 function executable:getHash()
     local self_priv = encapsulatedData[self]
-    if not self_priv.compiled then throw("kl:exe| exe does not have hash until it is compiled") end
+    if not self_priv.compiled then error("kl:exe| exe does not have hash until it is compiled") end
     return self_priv.hash
 end
 
@@ -125,7 +125,7 @@ function executable:run(remoteEnt)
     if remoteEnt == chip() then remoteEnt = nil end
 
     local self_priv = encapsulatedData[self]
-    if not self_priv.compiled then throw("kl:exe| compile exe before running it") end
+    if not self_priv.compiled then error("kl:exe| compile exe before running it") end
 
     local hash = self_priv.hash
     local files = self_priv.files

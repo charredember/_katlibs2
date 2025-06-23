@@ -35,7 +35,7 @@ if SERVER then
     end
 
     local function netqueue_add(cost,func)
-        if cost >= 64000 then throw("kl:al| filepath table too big! library netcode upgrade required for this implementation") end
+        if cost >= 64000 then error("kl:al| filepath table too big! library netcode upgrade required for this implementation") end
         table.insert(netqueue,{
             cost = cost,
             func = func,
@@ -96,7 +96,7 @@ elseif CLIENT then
                 key TEXT,
                 UNIQUE(urlCrc,key)
             );
-    
+
             CREATE TABLE IF NOT EXISTS KL_AL_SavedAssets (
                 urlCrc UNSIGNED TINYINT,
                 fileName TEXT,

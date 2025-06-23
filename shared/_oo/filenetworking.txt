@@ -2,7 +2,7 @@
 --@shared
 --@owneronly
 
-if not net.writeBStream then throw("katlibs:filenetworking requires netbstream loaded before!") end
+if not net.writeBStream then error("kl:filenetworking requires netbstream loaded before!") end
 
 local function networkFile(msgName,fpath,data)
     net.start(msgName)
@@ -61,18 +61,18 @@ if SERVER then
     end
 
     hook.add("ClientInitialized","kl:fn_ownerloaded",function(p)
-        if p == owner() then
-            filenetworking.loadFile = loadFile
-            filenetworking.saveFile = saveFile
+        if p ~= owner() then return end
 
-            for _,v in pairs(preclientQueue) do
-                v.func(unpack(v.args))
-            end
+        filenetworking.loadFile = loadFile
+        filenetworking.saveFile = saveFile
 
-            preclientQueue = nil
-
-            hook.remove("ClientInitialized","kl:fn_ownerloaded")
+        for _,v in pairs(preclientQueue) do
+            v.func(unpack(v.args))
         end
+
+        preclientQueue = nil
+
+        hook.remove("ClientInitialized","kl:fn_ownerloaded")
     end)
 elseif CLIENT then
     --loading

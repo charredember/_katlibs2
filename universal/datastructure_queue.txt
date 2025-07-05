@@ -1,0 +1,53 @@
+--@author ember
+--@shared
+
+--https://www.lua.org/pil/11.4.html
+
+queue = {}
+
+function queue:new()
+    return setmetatable({first = 0, last = -1, empty = true},queue)
+end
+
+function queue:any()
+    return self.first <= self.last
+end
+
+function queue:pushLeft(value)
+    local first = self.first - 1
+    self.first = first
+    self[first] = value
+end
+
+function queue:pushRight(value)
+    local last = self.last + 1
+    self.last = last
+    self[last] = value
+end
+
+function queue:getLeft()
+    return self[self.first]
+end
+
+function queue:getRight()
+    return self[self.last]
+end
+
+function queue:popLeft()
+    local first = self.first
+    if first > self.last then throw("list empty") end
+    local value = self[first]
+    self[first] = nil
+    self.first = first + 1
+
+    return value
+end
+
+function queue:popRight()
+    local last = self.last
+    if self.first > last then throw("list empty") end
+    local value = self[last]
+    self[last] = nil
+    self.last = last - 1
+    return value
+end

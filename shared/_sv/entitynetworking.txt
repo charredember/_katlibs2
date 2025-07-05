@@ -1,34 +1,125 @@
 --@author ember
 --@server
+--@include _katlibs2/universal/datastructure_queue.txt
 
-local PLAYERS_ALL = {}
+if not queue then require("_katlibs2/universal/datastructure_queue.txt") end
 
-local queue = {}
-local function queueHook()
+local publicEnts = {}
 
+local privateEnts = {}
+local privateEntDirectory = setmetatable({},{
+    __index = function(t,k)
+        local nT = {}
+        t[k] = nT
+        return nT
+    end,
+})
+
+local networkQueue = queue:new()
+
+local function doNothing() end
+
+local function canNetwork(cost)
+    return net.getBitsLeft() - cost > 13333
 end
 
-function entitynetworking.send(players,key,ents)
-    if ents.entIndex then ents = {ents} end
-
-    net.start("kl_en")
-    for i = 1,#ents do
-        net.writeUInt(ents[i]:entIndex())
+local networkEnt
+do --queue
+    local function queueHook()
+        local itemsQueued = networkQueue:any()
+        while itemsQueued do
+            local entToNW = queue:getLeft()
+            if not canNetwork(13 + entToNW.cost) then return end
+            queue:popLeft()()
+        end
+        if not itemsQueued then hook.remove("tick","kl:en_ti") end
     end
-    net.send()
+
+    function networkEnt(nwFunc,cost)
+        if canNetwork(cost) then nwFunc() return end
+
+        networkQueue:pushRight({
+            nwFunc = nwFunc,
+            cost = cost,
+        })
+        hook.add("tick","kl:en_ti",queueHook)
+    end
 end
 
-function entitynetworking.broadcast(key,ents)
-    entitynetworking.send(PLAYERS_ALL,key,e)
+local function setupEnt(e,netCodeCB,netCodeCBCost)
+    local cost = 13 + netCodeCBCost
+    local eid = e:entIndex()
+
+    local function nwFunc()
+        net.writeUInt(eid,13)
+        netCodeCB()
+    end
+    networkEnt(nwFunc,cost)
+
+    return nwFunc
 end
+
+local unregister
+hook.add("ClientInitialized","kl:en_ci",function(p)
+    for e,data in pairs(publicEnts) do
+        data.nwFunc()
+    end
+end)
 
 hook.add("EntityRemoved","kl:en_er",function(e)
-
+    unregister(e)
 end)
 
-hook.add("ClientInitialized","kl:en_ci",function(p)
+function entitynetworking.register(key,ents,netCodeCB,netCodeCBCost)
+    if ents.entIndex then ents = {ents} end
+    if not netCodeCB then netCodeCB = doNothing end
+    if not netCodeCBCost then netCodeCBCost = 0 end
 
-end)
+    for i = 1,#ents do
+        local e = ents[i]
+        local nwFunc = setupEnt(e,netCodeCB,netCodeCBCost)
 
-hook.add("PlayerDisconnect","kl:en_pl",function(p)
+        publicEnts[e] = {
+            nwFunc = nwFunc,
+            additionalCost = netCodeCBCost
+        }
+    end
+end
 
+function entitynetworking.registerPrivate(key,ents,players,netCodeCB,netCodeCBCost)
+    if ents.entIndex then ents = {ents} end
+    if not netCodeCB then netCodeCB = doNothing end
+    if not netCodeCBCost then netCodeCBCost = 0 end
+
+    local steamIDs = {}
+    for i = 1, #players do
+        steamIDs[i] = players[i]:getSteamID()
+    end
+
+    for i = 1,#ents do
+        local e = ents[i]
+        local nwFunc = setupEnt(e,netCodeCB,netCodeCBCost)
+
+        privateEnts[e] = {
+            nwFunc = nwFunc,
+            additionalCost = netCodeCBCost,
+            players = players,
+        }
+
+        for j = 1, #steamIDs do
+            steamIDs[i] = players[i]:getSteamID()
+        end
+    end
+end
+
+function entitynetworking.unregister(e)
+    publicEnts[e] = nil
+
+    local privData = privateEnts[e]
+    if not privData then return end
+    local players = privData.players
+    for i = 1, #players do
+        privateEntDirectory[players[i]:getSteamID()][e] = nil
+    end
+end
+unregister = entitynetworking.unregister

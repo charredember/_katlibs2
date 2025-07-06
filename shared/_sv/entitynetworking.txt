@@ -45,13 +45,19 @@ local function doEntChunk(key,nwEnts,recipients)
     local co = coroutine.wrap(function()
         for i = 1,#nwEnts do
             local nwEnt = nwEnts[i]
-            while not canSend(nwEnt.cost) do
+            local ent = nwEnt.ent
+
+            local netcode = netcodeCBs[key]
+            local cost = netcode and netcode.cost + 13 or 13
+
+            while not canSend(cost) do
                 netSend()
                 coroutine.yield(false)
             end
 
             netStart()
-            nwEnt.nwFunc()
+            net.writeBool(true)
+            net.writeUInt(ent:entIndex(),13)
         end
 
         netSend()

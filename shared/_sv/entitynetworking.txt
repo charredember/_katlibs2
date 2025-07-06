@@ -4,92 +4,105 @@
 
 if not queue then require("_katlibs2/universal/datastructure_queue.txt") end
 
-local publicEnts = {}
+local infiniteIndexMM
+infiniteIndexMM = function(t,k)
+    local newTab = {}
+    setmetatable(newTab,{["__index"] = infiniteIndexMM})
+    t[k] = newTab
+    return newTab
+end
 
-local privateEnts = {}
-local privateEntDirectory = setmetatable({},{
-    __index = function(t,k)
-        local nT = {}
-        t[k] = nT
-        return nT
-    end,
-})
+local netcodeCBs = {}
 
-local networkQueue = queue:new()
+local publicEnts = setmetatable({}, {__index = infiniteIndexMM})
+-- publicEnts[key][ent]
+
+local privateEnts = setmetatable({}, {__index = infiniteIndexMM})
+-- privateEnts[steamid][key][ent]
+
+local entLookup = {}
+local entChunkQueue = queue:new()
 
 local function doNothing() end
 
-local function canNetwork(cost)
+local function canSend(cost)
     return net.getBitsLeft() - cost > 13333
 end
 
-local networkEnt
-do --queue
-    local function queueHook()
-        local itemsQueued = networkQueue:any()
-        while itemsQueued do
-            local entToNW = queue:getLeft()
-            if not canNetwork(13 + entToNW.cost) then return end
-            queue:popLeft()()
+local function doEntChunk(key,nwEnts,recipients)
+    local netActive = false
+
+    local function netStart()
+        if netActive then return end
+        net.start("kl:en")
+    end
+
+    local function netSend()
+        if not netActive then return end
+        net.send(recipients)
+    end
+
+    local co = coroutine.wrap(function()
+        for i = 1,#nwEnts do
+            local nwEnt = nwEnts[i]
+            while not canSend(nwEnt.cost) do
+                netSend()
+                coroutine.yield(false)
+            end
+
+            netStart()
+            nwEnt.nwFunc()
         end
-        if not itemsQueued then hook.remove("tick","kl:en_ti") end
-    end
 
-    function networkEnt(nwFunc,cost)
-        if canNetwork(cost) then nwFunc() return end
+        netSend()
+        coroutine.yield(true)
+    end)
 
-        networkQueue:pushRight({
-            nwFunc = nwFunc,
-            cost = cost,
-        })
-        hook.add("tick","kl:en_ti",queueHook)
+    local queueMessage = true
+    if not entChunkQueue:any() then
+        queueMessage = not co()
     end
+    if not queueMessage then return end
+
+    entChunkQueue:pushRight(co)
+    hook.add("tick","kl:en_ti",function()
+        while true do
+            if not entChunkQueue:any() then
+                hook.remove("tick","kl:en_ti")
+                return
+            end
+
+            if entChunkQueue:getLeft()() then entChunkQueue:popLeft() end
+        end
+    end)
 end
 
-local function setupEnt(e,netCodeCB,netCodeCBCost)
-    local cost = 13 + netCodeCBCost
-    local eid = e:entIndex()
+function entitynetworking.setNetcode(key,netcodeFunc,cost)
+    netCodeCB = netCodeCB or doNothing
+    cost = cost or 0
 
-    local function nwFunc()
-        net.writeUInt(eid,13)
-        netCodeCB()
-    end
-    networkEnt(nwFunc,cost)
-
-    return nwFunc
+    netcodeCBs[key] = {
+        netcodeFunc = netcodeFunc,
+        cost = cost,
+    }
 end
 
-local unregister
-hook.add("ClientInitialized","kl:en_ci",function(p)
-    for e,data in pairs(publicEnts) do
-        data.nwFunc()
-    end
-end)
-
-hook.add("EntityRemoved","kl:en_er",function(e)
-    unregister(e)
-end)
-
-function entitynetworking.register(key,ents,netCodeCB,netCodeCBCost)
+function entitynetworking.broadcast(key,ents,...)
     if ents.entIndex then ents = {ents} end
-    if not netCodeCB then netCodeCB = doNothing end
-    if not netCodeCBCost then netCodeCBCost = 0 end
 
     for i = 1,#ents do
         local e = ents[i]
-        local nwFunc = setupEnt(e,netCodeCB,netCodeCBCost)
 
-        publicEnts[e] = {
-            nwFunc = nwFunc,
-            additionalCost = netCodeCBCost
+        publicEnts[key][e] = {...}
+        entLookup[e] = {
+            private = false,
+            key = key,
         }
     end
 end
 
-function entitynetworking.registerPrivate(key,ents,players,netCodeCB,netCodeCBCost)
+function entitynetworking.send(key,ents,players,...)
     if ents.entIndex then ents = {ents} end
-    if not netCodeCB then netCodeCB = doNothing end
-    if not netCodeCBCost then netCodeCBCost = 0 end
 
     local steamIDs = {}
     for i = 1, #players do
@@ -98,17 +111,16 @@ function entitynetworking.registerPrivate(key,ents,players,netCodeCB,netCodeCBCo
 
     for i = 1,#ents do
         local e = ents[i]
-        local nwFunc = setupEnt(e,netCodeCB,netCodeCBCost)
-
-        privateEnts[e] = {
-            nwFunc = nwFunc,
-            additionalCost = netCodeCBCost,
-            players = players,
-        }
 
         for j = 1, #steamIDs do
-            steamIDs[i] = players[i]:getSteamID()
+            local steamID = steamIDs[j]
+            privateEnts[steamID][key][e] = {...}
         end
+        entLookup[e] = {
+            private = true,
+            key = key,
+            steamIDs = steamIDs,
+        }
     end
 end
 
@@ -122,4 +134,21 @@ function entitynetworking.unregister(e)
         privateEntDirectory[players[i]:getSteamID()][e] = nil
     end
 end
-unregister = entitynetworking.unregister
+
+hook.add("ClientInitialized","kl:en_ci",function(p)
+    for e,data in pairs(publicEnts) do
+        networkEnt(data.nwFunc,data.cost)
+    end
+
+    local privEntList = privateEntDirectory[p:getSteamID()]
+    if not privEntList then return end
+    for e,_ in pairs(privEntList) do
+        local data = privateEnts[e]
+        networkEnt(data.nwFunc,data.cost)
+    end
+end)
+
+local unregister = entitynetworking.unregister
+hook.add("EntityRemoved","kl:en_er",function(e)
+    unregister(e)
+end)

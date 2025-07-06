@@ -18,10 +18,18 @@ local publicEnts = setmetatable({}, {__index = infiniteIndexMM})
 -- publicEnts[key][ent]
 
 local privateEnts = setmetatable({}, {__index = infiniteIndexMM})
--- privateEnts[steamid][key][ent]
+-- privateEnts[ply][key][ent]
 
 local entLookup = {}
-local entChunkQueue = queue:new()
+local netMessageQueue = queue:new()
+
+local savedCrcs = setmetatable({}, {
+    __index = function(t,k)
+        local crc = tonumber(crc(k))
+        t[k] = crc
+        return crc
+    end
+})
 
 local function doNothing() end
 
@@ -29,58 +37,92 @@ local function canSend(cost)
     return net.getBitsLeft() - cost > 13333
 end
 
-local function doEntChunk(key,nwEnts,recipients)
-    local netActive = false
+local function sendNowElseQueue(netMessage)
+    if not netMessageQueue:any() and netMessage() then return end --try to run it to completion if possible
 
-    local function netStart()
-        if netActive then return end
-        net.start("kl:en")
-    end
+    netMessageQueue:pushRight(netMessageco)
+    hook.add("tick","kl:en_ti",function()
+        while true do
+            if not netMessageQueue:any() then
+                hook.remove("tick","kl:en_ti")
+                return
+            end
 
-    local function netSend()
-        if not netActive then return end
-        net.send(recipients)
-    end
+            if netMessageQueue:getLeft()() then
+                netMessageQueue:popLeft()
+            else
+                return
+            end
+        end
+    end)
+end
 
+local function doEntChunk(key,entsWithArgs,players)
     local co = coroutine.wrap(function()
-        for i = 1,#nwEnts do
-            local nwEnt = nwEnts[i]
-            local ent = nwEnt.ent
+        local netActive = false
+        local private = (players ~= nil)
 
-            local netcode = netcodeCBs[key]
-            local cost = netcode and netcode.cost + 13 or 13
+        local function netStart()
+            if netActive then return end
+            netActive = true
+            net.start("kl:en")
+            net.writeUInt(savedCrcs[key],32)
+        end
 
+        local function netEnd()
+            if not netActive then return end
+            netActive = false
+            net.writeBool(false)
+            net.send(players)
+        end
+
+        local netcode = netcodeCBs[key]
+        local cost = netcode and netcode.cost + 13 or 13
+        local netcodeFunc = netcode and netcode.netcodeFunc or doNothing
+
+        local plyLookupTab
+        if private then
+            plyLookupTab = {}
+            for i = 1, #players do
+                local ply = players[i]
+                plyLookupTab[ply] = true
+            end
+        end
+
+        for ent,args in pairs(entsWithArgs) do
             while not canSend(cost) do
-                netSend()
+                netEnd()
                 coroutine.yield(false)
             end
 
             netStart()
             net.writeBool(true)
             net.writeUInt(ent:entIndex(),13)
-        end
+            netcodeFunc()
 
-        netSend()
+            local entLookupTab = entLookup[ent] or {
+                private = private,
+                key = key,
+                players = private and {} or nil,
+            }
+
+            if private then
+                for j = 1, #players do
+                    local ply = players[j]
+                    privateEnts[ply][key][ent] = args
+                end
+            else
+                publicEnts[key][ent] = args
+            end
+
+            entLookup[ent] = entLookupTab
+        end
+        netEnd()
+
         coroutine.yield(true)
     end)
 
-    local queueMessage = true
-    if not entChunkQueue:any() then
-        queueMessage = not co()
-    end
-    if not queueMessage then return end
-
-    entChunkQueue:pushRight(co)
-    hook.add("tick","kl:en_ti",function()
-        while true do
-            if not entChunkQueue:any() then
-                hook.remove("tick","kl:en_ti")
-                return
-            end
-
-            if entChunkQueue:getLeft()() then entChunkQueue:popLeft() end
-        end
-    end)
+    sendNowElseQueue(co)
 end
 
 function entitynetworking.setNetcode(key,netcodeFunc,cost)
@@ -93,68 +135,73 @@ function entitynetworking.setNetcode(key,netcodeFunc,cost)
     }
 end
 
+local function setupEnts(ents,...)
+    local result = {}
+    for i = 1,#ents do
+        local ent = ents[i]
+        result[ent] = {...}
+    end
+    return result
+end
+
 function entitynetworking.broadcast(key,ents,...)
     if ents.entIndex then ents = {ents} end
-
-    for i = 1,#ents do
-        local e = ents[i]
-
-        publicEnts[key][e] = {...}
-        entLookup[e] = {
-            private = false,
-            key = key,
-        }
-    end
+    doEntChunk(key,setupEnts(ents,...))
 end
 
-function entitynetworking.send(key,ents,players,...)
+function entitynetworking.send(players,key,ents,...)
     if ents.entIndex then ents = {ents} end
+    doEntChunk(key,setupEnts(ents,...),players)
+end
 
-    local steamIDs = {}
-    for i = 1, #players do
-        steamIDs[i] = players[i]:getSteamID()
-    end
+function entitynetworking.unregister(ent)
+    local entData = entLookup[ent]
+    if not entData then return end
+    entLookup[ent] = nil
 
-    for i = 1,#ents do
-        local e = ents[i]
+    local key = entData.key
 
-        for j = 1, #steamIDs do
-            local steamID = steamIDs[j]
-            privateEnts[steamID][key][e] = {...}
+    if entData.private then
+        local players = entData.players
+        for i = 1,#players do
+            local ply = players[i]
+            if not isValid(ply) then continue end
+            privateEnts[ply][key][ent] = nil
         end
-        entLookup[e] = {
-            private = true,
-            key = key,
-            steamIDs = steamIDs,
-        }
+    else
+        publicEnts[key][ent] = nil
     end
+
+    sendNowElseQueue(function()
+        if not canSend(20) then return false end
+        net.start("kl:en_r")
+        net.writeUInt(ent:entIndex(),13)
+        net.send()
+        return true
+    end)
 end
 
-function entitynetworking.unregister(e)
-    publicEnts[e] = nil
+hook.add("ClientInitialized","kl:en_ci",function(ply)
+    sendNowElseQueue(function()
+        if not canSend(80) then return false end
+        net.start("kl:en_init")
+        net.send()
+        return true
+    end)
 
-    local privData = privateEnts[e]
-    if not privData then return end
-    local players = privData.players
-    for i = 1, #players do
-        privateEntDirectory[players[i]:getSteamID()][e] = nil
-    end
-end
-
-hook.add("ClientInitialized","kl:en_ci",function(p)
-    for e,data in pairs(publicEnts) do
-        networkEnt(data.nwFunc,data.cost)
+    local players = {ply}
+    for key,entsWithArgs in pairs(publicEnts) do
+        doEntChunk(key,entsWithArgs,players)
     end
 
-    local privEntList = privateEntDirectory[p:getSteamID()]
+    local privEntList = privateEnts[ply]
     if not privEntList then return end
-    for e,_ in pairs(privEntList) do
-        local data = privateEnts[e]
-        networkEnt(data.nwFunc,data.cost)
+    for key,entsWithArgs in pairs(privEntList) do
+        doEntChunk(key,entsWithArgs,players)
     end
 end)
 
 local unregister = entitynetworking.unregister
-hook.add("EntityRemoved","kl:en_er",function(e)
-    unregister(e)
+hook.add("EntityRemoved","kl:en_er",function(ent)
+    unregister(ent)
 end)

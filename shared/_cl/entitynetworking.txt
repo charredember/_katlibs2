@@ -1,99 +1,95 @@
 --@author ember
 --@client
 
-local nullfunc = function() end
-
-local networkedEnts = setmetatable({}, {["__index"] = function(t,k)
-    t[k] = {
-        initialize = nullfunc,
-        deinitialize = nullfunc,
-    }
-    return t[k]
-end})
-
-local CBs = setmetatable({}, {["__index"] = function(t,k)
-    t[k] = {
-        netcode = nullfunc,
-        valid = nullfunc,
-        removed = nullfunc,
-    }
-    return t[k]
-end})
-
-function entitynetworking.setNetcode(key,CB)
-    CBs[tonumber(crc(key))].netcode = CB
-end
-
-function entitynetworking.setInitializedCB(key,CB)
-    CBs[tonumber(crc(key))].valid = CB
-end
-
-function entitynetworking.setRemovedCB(key,CB)
-    CBs[tonumber(crc(key))].removed = CB
-end
-
-local i = 0
-
-local lastNW = {}
-lastNW.public = {}
-lastNW.private = {}
-local function receive(type)
-    local cachedVars = lastNW[type]
-
-    local updateHash = net.readBool()
-
-    local hash = updateHash and net.readUInt(32) or cachedVars.hash
-    local updateNetcode = net.readBool()
-    local eid = net.readUInt(13)
-    local netcodeReturns = updateNetcode and ({CBs[hash].netcode(eid)} or {}) or cachedVars.netcodeReturns
-
-    networkedEnts[eid] = {
-        firstTimeInit = true,
-        initialize = function(self)
-            local function doInit()
-                CBs[hash].valid(eid,self.firstTimeInit,unpack(netcodeReturns))
-                self.firstTimeInit = false
-            end
-
-            if isValid(entity(eid)) then doInit() return end
-
-            local hookKey = "kl:en_awaitValid_" .. tostring(eid)
-            hook.add("tick",hookKey,function()
-                if not isValid(entity(eid)) then return end
-                doInit()
-                hook.remove("tick",hookKey)
-            end)
-        end,
-        deinitialize = function(self)
-            CBs[hash].removed(eid,unpack(netcodeReturns))
-            networkedEnts[eid] = nil
-            hook.remove("tick","kl:en_awaitValid_" .. tostring(eid))
-        end
-    }
-
-    if isValid(entity(eid)) then
-        networkedEnts[eid]:initialize()
+local savedCrcs = setmetatable({}, {
+    __index = function(t,k)
+        local crc = tonumber(crc(k))
+        t[k] = crc
+        return crc
     end
+})
 
-    lastNW[type] = {
-        hash = hash,
-        netcodeReturns = netcodeReturns,
-    }
+local function doNothing() end
+
+local activeEnts = {}
+local types = setmetatable({}, {
+    __index = function(t,k)
+        local newType = {
+            netcode = doNothing,
+            initialized = doNothing,
+            deinitialized = doNothing,
+            removed = doNothing,
+        }
+        t[k] = newType
+        return newType
+    end
+})
+
+function entitynetworking.setNetcode(key,cb)
+    types[savedCrcs[key]].netcode = cb
 end
 
-net.receive("kl:en_pub",function()
-    receive("public")
+function entitynetworking.setInitializedCB(key,cb)
+    types[savedCrcs[key]].initialized = cb
+end
+
+function entitynetworking.setDeinitializedCB(key,cb)
+    types[savedCrcs[key]].deinitialized = cb
+end
+
+function entitynetworking.setRemovedCB(key,cb)
+    types[savedCrcs[key]].removed = cb
+end
+
+net.receive("kl:en",function()
+    local keyCrc = net.readUInt(32)
+    local currType = types[keyCrc]
+    if not currType then throw("kl:en| received unregistered type!") end
+
+    while net.readBool() do
+        local eid = net.readUInt(13)
+        local args = {currType.netcode(eid)}
+
+        local newActiveEnt = {
+            initialize = function()
+                currType.initialized(eid,unpack(args))
+            end,
+            deinitialize = function()
+                currType.deinitialized(eid,unpack(args))
+            end,
+            remove = function()
+                currType.removed(eid,unpack(args))
+            end,
+        }
+
+        if isValid(entity(eid)) then newActiveEnt.initialize() end
+        activeEnts[eid] = newActiveEnt
+    end
 end)
-net.receive("kl:en_pri",function()
-    receive("private")
+
+local initialized = false
+net.receive("kl:en_init",function()
+    initialized = true
+end)
+
+net.receive("kl:en_r",function()
+    if not initialized then return end
+    local activeEnt = activeEnts[net.readUInt(13)]
+    if not activeEnt then return end
+    activeEnt.remove()
+end)
+
+hook.add("EntityRemoved","kl:en_awaitentity",function(ent)
+    if not ent then return end
+    local activeEnt = activeEnts[ent:entIndex()]
+    if not activeEnt then return end
+
+    activeEnt.deinitialize()
 end)
 
 hook.add("NetworkEntityCreated","kl:en_awaitentity",function(ent)
-    local eid = ent:entIndex()
-    networkedEnts[eid]:initialize()
-end)
+    local activeEnt = activeEnts[ent:entIndex()]
+    if not activeEnt then return end
 
-net.receive("kl:en_er",function()
-    local eid = net.readInt(13)
-    networkedEnts[eid]:deinitialize()
+    activeEnt.initialize()
 end)

@@ -22,7 +22,7 @@ function net.writeBStream(data,compress)
         local co = coroutine.wrap(function()
             repeat
                 local bytesLeft
-                repeat 
+                repeat
                     bytesLeft = math.floor(net.getBytesLeft() / 1.2)
                     local awaitNet = (bytesLeft < NETLIMIT_FLOOR)
                     if awaitNet then coroutine.yield() end

@@ -41,7 +41,13 @@ function entitynetworking.setRemovedCB(key,cb)
     types[savedCrcs[key]].removed = cb
 end
 
+local ready = false
+net.receive("kl:en_init",function()
+    ready = true
+end)
+
 net.receive("kl:en",function()
+    if not ready then return end
     local keyCrc = net.readUInt(32)
     local currType = types[keyCrc]
     if not currType then throw("kl:en| received unregistered type!") end
@@ -54,11 +60,14 @@ net.receive("kl:en",function()
             initialize = function()
                 currType.initialized(eid,unpack(args))
             end,
+
             deinitialize = function()
                 currType.deinitialized(eid,unpack(args))
             end,
+
             remove = function()
                 currType.removed(eid,unpack(args))
+                activeEnts[eid] = nil
             end,
         }
 
@@ -67,19 +76,14 @@ net.receive("kl:en",function()
     end
 end)
 
-local initialized = false
-net.receive("kl:en_init",function()
-    initialized = true
-end)
-
 net.receive("kl:en_r",function()
-    if not initialized then return end
     local activeEnt = activeEnts[net.readUInt(13)]
     if not activeEnt then return end
+
     activeEnt.remove()
 end)
 
-hook.add("EntityRemoved","kl:en_awaitentity",function(ent)
+hook.add("EntityRemoved","kl:en_er",function(ent)
     if not ent then return end
     local activeEnt = activeEnts[ent:entIndex()]
     if not activeEnt then return end
@@ -87,7 +91,7 @@ hook.add("EntityRemoved","kl:en_awaitentity",function(ent)
     activeEnt.deinitialize()
 end)
 
-hook.add("NetworkEntityCreated","kl:en_awaitentity",function(ent)
+hook.add("NetworkEntityCreated","kl:en_nec",function(ent)
     local activeEnt = activeEnts[ent:entIndex()]
     if not activeEnt then return end
 

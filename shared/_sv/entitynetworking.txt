@@ -149,8 +149,9 @@ function entitynetworking.broadcast(key,ents,...)
     doEntChunk(key,setupEnts(ents,...))
 end
 
-function entitynetworking.send(players,key,ents,...)
+function entitynetworking.send(key,ents,players,...)
     if ents.entIndex then ents = {ents} end
+    if players.entIndex then players = {players} end
     doEntChunk(key,setupEnts(ents,...),players)
 end
 

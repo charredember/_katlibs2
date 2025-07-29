@@ -98,7 +98,7 @@ local function doEntChunk(key,entsWithArgs,players)
             netStart()
             net.writeBool(true)
             net.writeUInt(ent:entIndex(),13)
-            netcodeFunc()
+            netcodeFunc(unpack(args))
 
             local entLookupTab = entLookup[ent] or {
                 private = private,

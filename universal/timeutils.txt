@@ -83,3 +83,33 @@ function timeutils.newTickDivider()
         end
     end
 end
+
+local c_wait = coroutine.wait
+local m_min = math.min
+function timeutils.threadedDTtween(length,updateRate,func)
+    local time,DT
+    local yield
+
+    if func then
+        yield = function() c_wait(m_min(length - DT,updateRate)) end
+    else
+        func = updateRate
+        yield = coroutine.yield
+    end
+
+    local savedTime = timer.systime()
+
+    while true do
+        time = timer.systime()
+        DT = time - savedTime
+        
+        if DT <= length then
+            func(DT / length)
+        else
+            func(1)
+            break
+        end
+
+        yield()
+    end
+end

@@ -3,6 +3,7 @@
 --@include _katlibs2/universal/datastructure_queue.txt
 
 if not queue then require("_katlibs2/universal/datastructure_queue.txt") end
+print("entitynetworking is depreciated this shit never worked right please switch this chip to use nwentity")
 
 local infiniteIndexMM
 infiniteIndexMM = function(t,k)

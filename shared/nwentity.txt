@@ -1,0 +1,105 @@
+--@shared
+if nwentity then return end
+nwentity = {}
+
+local ent_meta = getMethods("entity")
+local e_entIndex = ent_meta.entIndex
+
+local n_start = net.start
+local n_writeUInt = net.writeUInt
+local n_readUInt = net.readUInt
+local n_send = net.send
+local isValid = isValid
+local t_simple = timer.simple
+local entity = entity
+
+local NETSTRING_ENTREMOVED = "kl:nwe"
+
+local activeEnts = {}
+if SERVER then
+    function net.writeNWEntity(ent)
+        activeEnts[ent] = true
+        n_writeUInt(e_entIndex(ent),13)
+    end
+
+    function nwentity.sendRemoveCall(ent,ply)
+        n_start(NETSTRING_ENTREMOVED)
+        n_writeUInt(e_entIndex(ent),13)
+        n_send(ply)
+    end
+
+    hook.Add("entityRemoved","nwentity",nwentity.BroadcastRemoveCall)
+elseif CLIENT then
+    setmetatable(nwentity,{__call = function(eid) return activeEnts[eid] end})
+
+    local initialized = {}
+    function net.readNWEntity()
+        local eid = n_readUInt(13)
+
+        local nwEnt = activeEnts[eid]
+        if nwEnt then return nwEnt end
+        nwEnt = {
+            getEntity = function() return entity(eid) end,
+            entIndex = function() return eid end,
+        }
+        activeEnts[eid] = nwEnt
+
+        t_simple(0,function()
+            local ent = entity(eid)
+            if not isValid(ent) then return end
+
+            if initialized[eid] then return end
+            initialized[eid] = true
+
+            local init = nwEnt.OnInitialize
+            if not init then return end
+            init(eid,ent)
+        end)
+
+        return nwEnt
+    end
+
+    function ent_meta:getNWEntity()
+        return activeEnts[e_entIndex(self)]
+    end
+
+    hook.add("NetworkEntityCreated","kl:nwe_nec",function(ent)
+        if not isValid(ent) then return end
+
+        local eid = e_entIndex(ent)
+        local nwEnt = activeEnts[eid]
+        if not nwEnt then return end
+
+        if initialized[eid] then return end
+        initialized[eid] = true
+
+        local init = nwEnt.onInitialize
+        if not init then return end
+        init(eid,ent)
+    end)
+
+    hook.add("EntityRemoved","kl:nwe_er",function(ent)
+        local eid = e_entIndex(ent)
+        local nwEnt = activeEnts[eid]
+        if not nwEnt then return end
+
+        initialized[eid] = nil
+
+        local deinit = nwEnt.onDeinitialize
+        if not deinit then return end
+        deinit(eid,ent)
+    end)
+
+    net.receive(NETSTRING_ENTREMOVED, function()
+        local eid = n_readUInt(13)
+        local nwEnt = activeEnts[eid]
+        if not nwEnt then return end
+
+        local remove = nwEnt.onRemove
+        if not remove then return end
+        remove(eid)
+        activeEnts[eid] = nil
+    end)
+end
+
+--solarembra 9/1/2025

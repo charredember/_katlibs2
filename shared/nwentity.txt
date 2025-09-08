@@ -2,7 +2,7 @@
 if nwentity then return end
 nwentity = {}
 
-local ent_meta = getMethods("entity")
+local ent_meta = getMethods("Entity")
 local e_entIndex = ent_meta.entIndex
 
 local n_start = net.start
@@ -11,6 +11,7 @@ local n_readUInt = net.readUInt
 local n_send = net.send
 local isValid = isValid
 local t_simple = timer.simple
+local t_systime = timer.systime
 local entity = entity
 
 local NETSTRING_ENTREMOVED = "kl:nwe"
@@ -28,19 +29,29 @@ if SERVER then
         n_send(ply)
     end
 
-    hook.Add("entityRemoved","nwentity",nwentity.BroadcastRemoveCall)
+    hook.add("EntityRemoved","nwentity",nwentity.sendRemoveCall)
 elseif CLIENT then
     setmetatable(nwentity,{__call = function(eid) return activeEnts[eid] end})
+
+    local retTrue = function() return true end
+    local retFalse = function() return false end
 
     local initialized = {}
     function net.readNWEntity()
         local eid = n_readUInt(13)
 
         local nwEnt = activeEnts[eid]
-        if nwEnt then return nwEnt end
+        if nwEnt then
+            nwEnt.isFirstTimeNetworked = retFalse
+            return nwEnt
+        end
+
+        local st = t_systime()
         nwEnt = {
             getEntity = function() return entity(eid) end,
             entIndex = function() return eid end,
+            getNWLifetime = function() return t_systime() - st end,
+            isFirstTimeNetworked = retTrue,
         }
         activeEnts[eid] = nwEnt
 
@@ -51,7 +62,7 @@ elseif CLIENT then
             if initialized[eid] then return end
             initialized[eid] = true
 
-            local init = nwEnt.OnInitialize
+            local init = nwEnt.onInitialize
             if not init then return end
             init(eid,ent)
         end)
@@ -79,6 +90,8 @@ elseif CLIENT then
     end)
 
     hook.add("EntityRemoved","kl:nwe_er",function(ent)
+        if not isValid(ent) then return end
+
         local eid = e_entIndex(ent)
         local nwEnt = activeEnts[eid]
         if not nwEnt then return end

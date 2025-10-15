@@ -23,13 +23,17 @@ if SERVER then
         n_writeUInt(e_entIndex(ent),13)
     end
 
-    function nwentity.sendRemoveCall(ent,ply)
+    function nwentity.callRemoveCL(ent,ply)
+        if not activeEnts[ent] then return end
+
         n_start(NETSTRING_ENTREMOVED)
         n_writeUInt(e_entIndex(ent),13)
         n_send(ply)
+
+        activeEnts[ent] = nil
     end
 
-    hook.add("EntityRemoved","nwentity",nwentity.sendRemoveCall)
+    hook.add("EntityRemoved","nwentity",nwentity.callRemoveCL)
 elseif CLIENT then
     setmetatable(nwentity,{__call = function(eid) return activeEnts[eid] end})
 
@@ -109,8 +113,8 @@ elseif CLIENT then
         if not nwEnt then return end
 
         local remove = nwEnt.onRemove
-        if not remove then return end
-        remove(eid)
+        if remove then remove(eid) end
+
         activeEnts[eid] = nil
     end)
 end

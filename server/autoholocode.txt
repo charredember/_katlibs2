@@ -1,0 +1,241 @@
+--@author ember
+--@server
+
+local str_format = string.format
+local t_insert = table.insert
+local t_add = table.add
+autoholocode = {}
+
+local function concatTab()
+    local tab = {}
+
+    local function add(str)
+        t_insert(tab,str)
+    end
+
+    local function add_nl(str)
+        t_insert(tab,"\n")
+        t_insert(tab,str)
+    end
+
+    local function concat()
+        return table.concat(tab)
+    end
+
+    local metadata = {tab = tab}
+    return add,add_nl,concat,metadata
+end
+
+local function commaListMembers(t)
+    return tostring(t):replace(" ",",")
+end
+
+
+local raw
+------------------------------------------------------------------------------------
+-- 0) complete holocode, no subsequent steps required
+
+local function getUniqueKey(tab,name)
+    local temp = name
+    local itr = 0
+    while tab[temp] do
+        temp = name .. itr
+        itr = itr + 1
+    end
+    temp = temp:replace(" ","_")
+    return temp
+end
+
+local nofunc = function() end
+local pacParts = setmetatable({
+    model2 = function(holocode,holocodeindex,parentName,part)
+        local s = part.self
+        local add,add_nl,concat,metadata = concatTab()
+        local name = getUniqueKey(holocodeindex,s.Name or "default")
+        metadata.name = name
+
+        add_nl(raw(
+            nil,
+            s.Position or Vector(0,0,0),
+            s.Angles or Angle(0,0,0),
+            s.Model or "",
+            s.Color and s.Color * 255 or Color(255,255,255),
+            s.Material or "",
+            parentName
+        ))
+
+        local scale = s.Scale
+        local size = s.Size
+        if scale or size then
+            scale = scale or Vector(1,1,1)
+            size = size or 1
+
+            local truescale = scale * size
+            add_nl(str_format("h:setScale(Vector(%f,%f,%f))",truescale.x,truescale.y,truescale.z))
+        end
+
+        local tab = {add=add,add_nl=add_nl,concat=concat,metadata=metadata}
+        holocodeindex[name] = tab
+        table.insert(holocode,tab)
+
+        return name
+    end,
+
+    clip2 = function(holocode,holocodeindex,parentName,part)
+        local s = part.self
+        local parentHolocode = holocodeindex[parentName]
+        local metadata = parentHolocode.metadata
+
+        if not metadata.clipItr then metadata.clipItr = 0 end
+        metadata.clipItr = metadata.clipItr + 1
+
+        local ang = s.Angles or Angle(0,0,0)
+        local pos = s.Position or Vector(0,0,0)
+        parentHolocode.add_nl(str_format("h:setClip(%i,true,Vector(%s),Vector(%s),h)",metadata.clipItr,commaListMembers(pos),commaListMembers(ang:getForward())))
+    end,
+},{__index = function(t,k) return nofunc end})
+
+local recursiveAdd
+function recursiveAdd(holocode,holocodeindex,parentName,part)
+    local partName = pacParts[part.self.ClassName](holocode,holocodeindex,parentName,part)
+    if not part.children or not next(part.children) then return end
+
+    for _,child in pairs(part.children) do
+        recursiveAdd(holocode,holocodeindex,partName or parentName,child)
+    end
+end
+
+function autoholocode.complete_PAC3(e,steamID64)
+    steamID64 = steamID64 or tonumber(owner():getSteamID64())
+    local pac_tab = e:getTable().pac_parts[steamID64].part
+    
+    local holocodeindex = {}
+    local holocode = {}
+    recursiveAdd(holocode,holocodeindex,"base",pac_tab)
+
+    local final = {}
+    for _,concatTab in ipairs(holocode) do
+        local metadata = concatTab.metadata
+        local strTab = metadata.tab
+        t_add(final,strTab)
+        t_insert(final,string.format("\nlocal %s = h",metadata.name))
+    end
+    return table.concat(final)
+end
+
+--fix stupid fucking PHX props
+--https://steamcommunity.com/sharedfiles/filedetails/?id=130921890
+local offset = -6.15
+local fuckingDumbassPHXOrigins = setmetatable({
+    ["models/hunter/plates/plate05x075.mdl"] = Vector(0,offset),
+    ["models/hunter/plates/plate075x075.mdl"] = Vector(offset,offset),
+},{__index = function(_,k)
+    if k:sub(1,30) == "models/hunter/plates/plate075x" then return Vector(offset,0) end
+    return Vector(0,0)
+end})
+local function getFixedDumbassOrigin(e)
+    return e:localToWorld(fuckingDumbassPHXOrigins[e:getModel()])
+end
+
+local convertDumbassStr = setmetatable({
+    ["025"] = 0.25,
+    ["05"] = 0.50,
+    ["075"] = 0.75,
+    ["125"] = 1.25,
+    ["105"] = 1.50,
+    ["150"] = 1.50,
+    ["175"] = 1.75,
+},{__index = function(_,k)
+    return tonumber(k)
+end})
+
+function autoholocode.complete_PHXUVFix(base,e,useHalfPlates)
+    local mdl = e:getModel()
+    if mdl:sub(1,26) ~= "models/hunter/plates/plate" then return end
+
+    local dimExpl = string.explode("x",mdl:sub(27,#mdl-4))
+    if #dimExpl < 2 then return end
+
+    local x = convertDumbassStr[dimExpl[1]]
+    local y = convertDumbassStr[dimExpl[2]]
+
+    if useHalfPlates then
+        x = x * 2
+        y = y * 2
+    end
+
+    return raw(
+        base,
+        getFixedDumbassOrigin(e),
+        e:getAngles(),
+        useHalfPlates and "models/hunter/plates/plate05x05.mdl" or "models/hunter/plates/plate1x1.mdl",
+        e:getColor(),
+        e:getMaterial()
+    )..str_format("\nh:setScale(Vector(%f,%f,1))",x,y)
+end
+
+------------------------------------------------------------------------------------
+-- 1) Basics (base,model,pos,ang,color,
+
+--General Purpose
+function autoholocode.raw(base,pos,ang,model,color,mat,baseName)
+    local add,add_nl,concat = concatTab()
+
+    baseName = baseName or "base"
+
+    pos = commaListMembers(base and base:worldToLocal(pos) or pos)
+    ang = commaListMembers(base and base:worldToLocalAngles(ang) or ang)
+
+    add_nl(str_format("h = hologram.create(%s:localToWorld(Vector(%s)),%s:localToWorldAngles(Angle(%s)),\"%s\")",baseName,pos,baseName,ang,model))
+    if mat ~= "" then add_nl(str_format("h:setMaterial(\"%s\")",mat)) end
+    if color ~= Color(255,255,255,255) then
+        color = commaListMembers(color)
+        add_nl(str_format("h:setColor(Color(%s))",color))
+    end
+    add_nl(str_format("h:setParent(%s)",baseName))
+
+    return concat()
+end
+raw = autoholocode.raw
+
+function autoholocode.general(base,e)
+    return raw(
+        base,
+        e:getPos(),
+        e:getAngles(),
+        e:getModel(),
+        e:getColor(),
+        e:getMaterial()
+    )
+end
+
+------------------------------------------------------------------------------------
+-- 2) Scale
+
+--Resizer - McKay
+--https://steamcommunity.com/sharedfiles/filedetails/?id=116892991
+function autoholocode.scale_Resizer(e)
+    local scale = e:getManipulateBoneScale(0)
+    if scale == Vector(1,1,1) then return end
+    return str_format("\nh:setScale(Vector(%s))",commaListMembers(scale))
+end
+
+------------------------------------------------------------------------------------
+-- 3) Clipping
+
+--Proper Clipping - Sevii
+--https://steamcommunity.com/sharedfiles/filedetails/?id=2256491552
+function autoholocode.clip_ProperClipping(e,stupidPhxProp)
+    local clipping = e:getTable().ClipData
+    if not clipping or table.isEmpty(clipping) then return end
+
+    local add,add_nl,concat = concatTab()
+    for i=1,#clipping do
+        local c = clipping[i]
+        local cpos = c.norm*c.dist
+        if stupidPhxProp then cpos = cpos - fuckingDumbassPHXOrigins[e:getModel()] end
+        add_nl(str_format("h:setClip(%i,true,Vector(%s),Vector(%s),h)",i,commaListMembers(cpos), commaListMembers(c.norm), h))
+    end
+
+    return concat()
+end

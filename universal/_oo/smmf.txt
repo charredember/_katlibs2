@@ -1,0 +1,321 @@
+--@author ember
+--@shared
+--@owneronly
+
+smmf = class("katlib_smmf")
+
+SMMF_CLASSTYPE = {
+    HOLO = 1,
+    PROP = 2,
+    SENT = 3,
+    SEAT = 4,
+    COMP = 5,
+}
+
+local autoTableIndexMM = function(t,k)
+    local nT = {}
+    t[k] = nT
+    return nT
+end
+
+local encapsulatedData = {}
+local isLocked = {}
+function smmf:initialize()
+    self.index = 0
+    self.linkedEnts = {}
+    encapsulatedData[self] = setmetatable({
+
+    },{__index = autoTableIndexMM})
+    isLocked[self] = false
+end
+
+---- iterator traversal
+function smmf:setIndex(i)
+    self.index = i
+end
+
+function smmf:advance()
+    local i = self.index
+    local data = encapsulatedData[self]
+
+    i = i + 1
+    self.index = i
+end
+
+function smmf:count()
+    return #encapsulatedData[self]
+end
+
+---- for methods that reference live ents (you can't store entids)
+function smmf:setLinkedEnt(ent)
+    local ent = tostring(ent:entIndex())
+    local linkedEnts = self.linkedEnts
+    local index = self.index
+
+    linkedEnts[index] = ent
+    linkedEnts[ent] = index
+end
+
+function smmf:setLinkedEnts(tab)
+    if not table.isSequential(tab) then throw("kl:smmf| table not sequential") end
+    local linkedEnts = self.linkedEnts
+
+    for index=1,#tab do
+        local ent = tostring(tab[index]:entIndex())
+        linkedEnts[index] = ent
+        linkedEnts[ent] = index
+    end
+end
+
+function smmf:getLinkedEnt(indexOrEnt,safe)
+    if indexOrEnt == nil then return end
+
+    local entInput = false
+    if not isnumber(indexOrEnt) then
+        entInput = true
+        indexOrEnt = tostring(indexOrEnt:entIndex())
+    end
+
+    local result = self.linkedEnts[indexOrEnt]
+    if not result and not safe then 
+        print(Color(255,0,0),"kl:smmf| ",Color(255,255,255),string.format("linkedent function tried to reference unlinked %s %s",entInput and "entid" or "smmfindex",tostring(indexOrEnt)))
+        return
+    end
+
+    if isstring(result) then result = entity(tonumber(result)) end
+    return result
+end
+
+function smmf:clearLinkedEnts()
+    self.linkedEnts = {}
+end
+
+----------------------------------------------------------------
+--propertyRegistry
+local property = class("katlib_smmf_property")
+
+local function setTemplate(type,key)
+    local templates = {
+        standard = function(self,val)
+            encapsulatedData[self][self.index][key] = val
+        end,
+
+        ent = function(self,e)
+            if not isValid(e) or not e.entIndex then return end
+
+            local index = isnumber(e) and e or self:getLinkedEnt(e)
+            encapsulatedData[self][self.index][key] = index
+        end,
+
+        vararg = function(self,...)
+            encapsulatedData[self][self.index][key] = {...}
+        end,
+
+        multistatement = function(self,...)
+            local data = encapsulatedData[self][self.index]
+            if not rawget(data, key) then data[key] = setmetatable({},{__index = autoTableIndexMM}) end
+
+            table.insert(data,{...})
+        end,
+    }
+    return templates[type]
+end
+
+local function getTemplate(type,key)
+    local templates = {
+        standard = function(self,data)
+            if not data then data = encapsulatedData[self][self.index] end --allow data to be optionally passed in for faster function calling
+            return data[key]
+        end,
+
+        ent = function(self,data)
+            if not data then data = encapsulatedData[self][self.index] end
+            return self:getLinkedEnt(data[key])
+        end,
+
+        vararg = function(self,data)
+            if not data then data = encapsulatedData[self][self.index] end
+            if not data[key] then return end
+            return unpack(data[key])
+        end,
+
+        multistatement = function(self,data)
+            if not data then data = encapsulatedData[self][self.index] end
+
+            if not rawget(data, key) then return end
+            return data
+        end,
+    }
+    return templates[type]
+end
+
+local autoSetFuncs = {}
+function property:initialize(key,overrides)
+    if not overrides then overrides = {} end
+
+    local autoSet = true and overrides.autoSet ~= false
+    local multiStatement = overrides.multiStatement or false
+
+    --setter func
+    local setMethodName = overrides.setMethodName or string.format("set%s",key)
+    local setMethodFunc = overrides.setMethod or (multiStatement and setTemplate("multistatement",key)) or setTemplate("standard",key)
+    smmf[setMethodName] = function(self,...)
+        if isLocked[self] then return end
+
+        setMethodFunc(self,...)
+    end
+
+    --getter func
+    local getMethodName = overrides.getMethodName or string.format("get%s",key)
+    local getMethodFunc = overrides.getMethod or getTemplate("standard",key)
+    smmf[getMethodName] = getMethodFunc
+
+    --autoset func
+    if not autoSet then autoSetFuncs[key] = (function() end) return end
+    local entSetFunc = getMethods("Hologram")[setMethodName]
+
+    if multiStatement then
+        autoSetFuncs[key] = function(e,data,smmfObj)
+            local getResult = getMethodFunc(smmfObj,data)
+            for i=1,#getResult do
+                local args = getResult[i]
+                --print(e,unpack(args))
+                entSetFunc(e,unpack(args))
+            end
+        end
+        return
+    end
+
+    autoSetFuncs[key] = overrides.autoSetFunc or function(e,data,smmfObj)
+        entSetFunc(e,getMethodFunc(smmfObj,data))
+    end
+end
+
+--autoset
+function smmf:autoSet(e,cbFunc)
+    if not cbFunc then cbFunc = function() end end
+
+    local data = encapsulatedData[self][self.index]
+    for key,value in pairs(data) do
+        if key == "Color" then value = Color(value.r,value.g,value.b,value.a) end
+        if cbFunc(key,value) then continue end
+
+        autoSetFuncs[key](e,data,self)
+    end
+end
+
+--serialize
+function smmf:serialize()
+    return von.serialize(encapsulatedData[self])
+end
+
+function smmf.load(data)
+    local newSmmf = smmf:new()
+    encapsulatedData[newSmmf] = von.deserialize(data)
+    isLocked[newSmmf] = true
+    return newSmmf
+end
+
+--free object from memory
+function smmf:destroy()
+    encapsulatedData[self] = nil
+    isLocked[self] = nil
+end
+
+--DEFINITIONS-------------------------------------
+property:new("Type",{autoSet = false})
+property:new("Model",{autoSet = false})
+property:new("Pos",{autoSet = false})
+property:new("Angles",{autoSet = false})
+
+--ent
+property:new("Bodygroup",{setMethod = setTemplate("vararg","Bodygroup"), getMethod = getTemplate("vararg","Bodygroup")})
+property:new("CollisionGroup")
+property:new("Class",{autoSet = false})
+property:new("Color")
+property:new("Contents")
+property:new("DoNotDuplicate",{setMethodName = "doNotDuplicate"})
+property:new("DrawShadow")
+property:new("Elasticity")
+property:new("FlexScale")
+property:new("FlexWeight")
+property:new("Friction")
+property:new("Health")
+property:new("Key",{autoSet = false})
+property:new("Mass")
+property:new("Material")
+property:new("MaxHealth")
+property:new("NoDraw")
+property:new("Parent",{setMethod = setTemplate("ent","Parent"), getMethod = getTemplate("ent","Parent")})
+property:new("PhysMaterial")
+property:new("Pose",{multiStatement = true})
+property:new("RenderFX")
+property:new("RenderMode")
+property:new("SENTTable",{autoSet = false})
+property:new("Skin")
+property:new("Solid")
+property:new("SubMaterial",{multiStatement = true})
+property:new("Trails",{setMethod = setTemplate("vararg","Trails"), getMethod = getTemplate("vararg","Trails")})
+property:new("Unbreakable")
+
+--holo
+property:new("Animation",{setMethod = setTemplate("vararg","Animation"), getMethod = getTemplate("vararg","Animation")})
+property:new("Clip",{
+    multiStatement = true,
+    setMethod = function(self,clipIndex, enabled, origin, normal, entity)
+        if entity and (not isValid(entity) or not entity.entIndex) then print(self, clipIndex, enabled, origin, normal, entity) throw("kl:smmf| ent param not valid") end
+
+        local data = encapsulatedData[self][self.index]
+        if not rawget(data, "Clip") then data.Clip = setmetatable({},{__index = autoTableIndexMM}) end
+
+        if entity then
+            data.Clip[clipIndex] = {clipIndex, enabled, origin, normal, self:getLinkedEnt(entity)}
+        else
+            data.Clip[clipIndex] = {clipIndex, enabled, origin, normal}
+        end
+    end,
+    getMethodName = "getClipping",
+    getMethod = function(self,data)
+        if not data then data = encapsulatedData[self][self.index] end
+        if not rawget(data, "Clip") then return end
+
+        local returnTab = {}
+        for _,clip in pairs(data.Clip) do
+            table.insert(returnTab,{clip[1],clip[2],clip[3],clip[4],clip[5] and self:getLinkedEnt(clip[5])})
+        end
+        return returnTab
+    end
+})
+property:new("CullMode")
+property:new("EngineLighting",{setMethodName = "suppressEngineLighting",})
+property:new("LightingOriginEntity",{setMethod = setTemplate("ent","LightingOriginEntity"), getMethod = setTemplate("ent","LightingOriginEntity")})
+property:new("MoveType")
+property:new("PlayerColor")
+property:new("RenderGroup")
+local standardGet = getTemplate("standard","Scale")
+property:new("Scale",{
+    getMethod = function(self,val)
+        local scale = standardGet(self,val)
+        if not scale then scale = Vector(1,1,1) end
+        return scale
+    end
+})
+property:new("Size")
+
+--model manager for convenience
+smmfmanager = {}
+SMMFMODELS = {}
+
+local requested = 0
+local loaded = 0
+function smmfmanager.loadFromFile(path)
+    requested = requested + 1
+    filenetworking.loadFile(path,function(data)
+        local loadedSmmf = smmf.load(bit.decompress(data))
+        loaded = loaded + 1
+
+        SMMFMODELS[path] = loadedSmmf
+        hook.run("SmmfModelManager_FileLoaded",path,loadedSmmf)
+        if loaded == requested then hook.run("SmmfModelManager_FilesFinished") end
+    end)
+end

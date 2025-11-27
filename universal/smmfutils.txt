@@ -1,0 +1,119 @@
+--@author ember
+--@server
+
+if not smmf then throw("katlibs:smmfutils requires smmf loaded before!") end
+
+local function constantProperties(smmfObj,base,ent)
+    smmfObj:setLinkedEnt(ent)
+
+    smmfObj:setModel(ent:getModel())
+
+    local localPos = base:worldToLocal(ent:getPos())
+    localPos:round(3)
+    smmfObj:setPos(localPos)
+
+    local localAng = base:worldToLocalAngles(ent:getAngles())
+    localAng:round(3)
+    smmfObj:setAngles(localAng)
+
+    local mat = ent:getMaterial()
+    if mat ~= "" then smmfObj:setMaterial(mat) end
+
+    local color = ent:getColor()
+    if color ~= Color(255,255,255,255) then smmfObj:setColor(ent:getColor()) end
+
+    local parent = ent:getParent()
+    if parent ~= base and parent ~= nil then
+        smmfObj:setParent(parent)
+    end
+end
+
+function smmf:addLocalHolo(base,holo)
+    self:advance()
+    self:setType(SMMF_CLASSTYPE.HOLO)
+
+    constantProperties(self,base,holo)
+
+    if not holo.getScale then holo = holo:toHologram() end
+
+    local scale = holo:getScale()
+    if scale ~= Vector(1,1,1) then self:setScale(holo:getScale()) end
+
+    local cliptable = holo:getClipping()
+    if cliptable ~= nil and #cliptable > 0 then
+        for ind,v in pairs(cliptable) do
+            self:setClip(ind,true,v.origin,v.normal,v.local_ent)
+        end
+    end
+
+    local suppressEngineLighting = holo:getSuppressEngineLighting()
+    if suppressEngineLighting then self:suppressEngineLighting(true) end
+
+    local rmode = holo:getRenderMode()
+    if rmode ~= RENDERMODE.NORMAL then
+        self:setRenderMode(rmode)
+    end
+
+    for i = 0,#holo:getBodygroups() - 1 do
+        local bg = holo:getBodygroup(i)
+        if bg ~= 0 then
+            self:setBodygroup(i,bg)
+        end
+    end
+end
+
+function smmf:addLocalProp(base,propent)
+    self:advance()
+    self:setType(SMMF_CLASSTYPE.PROP)
+
+    constantProperties(self,base,propent)
+
+    self:doNotDuplicate(true)
+end
+
+function smmf:addLocalSENT(base,sent,sentTable)
+    self:advance()
+    self:setType(SMMF_CLASSTYPE.SENT)
+
+    constantProperties(self,base,sent)
+
+    self:setSENTTable(sentTable)
+    self:setClass(sent:getClass())
+
+    self:doNotDuplicate(true)
+end
+
+function smmf:addLocalSeat(base,seat,sentTable)
+    self:advance()
+    self:setType(SMMF_CLASSTYPE.SEAT)
+
+    constantProperties(self,base,seat)
+
+    self:doNotDuplicate(true)
+end
+
+function smmf:addLocalComponent(base,comp)
+    self:advance()
+    self:setType(SMMF_CLASSTYPE.COMP)
+
+    constantProperties(self,base,comp)
+
+    self:doNotDuplicate(true)
+end
+
+local autoFuncs = {
+    starfall_hologram = smmf.addLocalHolo,
+    prop_physics = smmf.addLocalProp,
+    starfall_screen = smmf.addLocalComponent,
+    starfall_hud = smmf.addLocalComponent,
+}
+
+function smmf:addLocal_autoAssign(base,ent,sentData)
+    if not sentData then sentData = {} end
+
+    local autoFunc = autoFuncs[ent:getClass()]
+    if autoFunc then autoFunc(self,base,ent) return end
+
+    if ent:isVehicle() then self:addLocalSeat(base,ent) return end
+    self:addLocalSENT(base, ent, sentData[sent])
+end

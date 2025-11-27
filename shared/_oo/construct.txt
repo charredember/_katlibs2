@@ -1,0 +1,204 @@
+--@author ember
+--@shared
+--@owneronly
+
+if SERVER then
+    construct = class("katlib_construct")
+    
+    local currSmmf
+    local function bad() throw("not allowed in this cb!") end
+    local protectedSmmf = setmetatable({
+        setIndex = bad,
+        advance = bad,
+        setLinkedEnt = bad,
+        setLinkedEnts = bad,
+        clearLinkedEnts = bad,
+        destroy = bad,
+    },{
+        __index = function(t,k)
+            return currSmmf[k]
+        end
+    })
+    
+    local modelQueue = {}
+    function construct:initialize(base,smmfObj,flags)
+        currSmmf = smmfObj
+        local protectedSmmfObj = setmetatable({}, protectedSmmf)
+    
+        local children = {}
+        local keyParts = {}
+    
+        local keyToIndex = {}
+    
+        if not flags then flags = {} end
+        local scaleVar = flags.scaleVar or 1
+        local nodraw = flags.noDraw or false
+        local baseLighting = flags.baseLighting or false
+        local baseParent = flags.baseParent
+        local forceholo = flags.forceHolo
+        if baseParent == nil or baseParent == true then baseParent = base end
+    
+        local preEntCB = flags.preEntCB or function() end
+        local autoPropertyCB = flags.autoPropertyCB or function() end
+        local postEntCB = flags.postEntCB or function() end
+        local constructFinishedCB = flags.constructFinishedCB or function() end
+    
+        self.model = smmfObj
+        self.finishedSpawning = false
+    
+        local count = smmfObj:count()
+        local co = coroutine.wrap(function()
+            for i = 1,count do
+                smmfObj:setIndex(i)
+    
+                local model = smmfObj:getModel()
+                local pos = smmfObj:getPos()
+                local ang = smmfObj:getAngles()
+    
+                preEntCB(i,model,pos,ang)
+    
+                local part = ({
+                    [SMMF_CLASSTYPE.HOLO] = function()
+                        while not hologram.canSpawn() do coroutine.yield() end
+                        local holo = hologram.create(base:localToWorld(pos * scaleVar),
+                                                    base:localToWorldAngles(ang),
+                                                    model)
+                        if baseLighting then holo:setLightingOriginEntity(base) end
+                        return holo
+                    end,
+    
+                    [SMMF_CLASSTYPE.PROP] = function()
+                        if scaleVar ~= 1 then throw("kl:cs| attempted to use scaleVar on construct containing non-scalable component!") end
+                        while not prop.canSpawn() do coroutine.yield() end
+                        local pent = prop.create(base:localToWorld(pos),
+                                                    base:localToWorldAngles(ang),
+                                                    model,
+                                                    true)
+                        pent:doNotDuplicate(true)
+                        return pent
+                    end,
+    
+                    [SMMF_CLASSTYPE.SEAT] = function()
+                        if scaleVar ~= 1 then throw("kl:cs| attempted to use scaleVar on construct containing non-scalable component!") end
+                        while not prop.canSpawn() do coroutine.yield() end
+                        local seat = prop.createSeat(base:localToWorld(pos),
+                                                    base:localToWorldAngles(ang),
+                                                    model,
+                                                    true)
+                        seat:doNotDuplicate(true)
+                        return seat
+                    end,
+    
+                    [SMMF_CLASSTYPE.SENT] = function()
+                        if scaleVar ~= 1 then throw("kl:cs| attempted to use scaleVar on construct containing non-scalable component!") end
+                        while not prop.canSpawn() do coroutine.yield() end
+                        local sent = prop.createSent(base:localToWorld(pos),
+                                                    base:localToWorldAngles(ang),
+                                                    smmfObj:getClass(),
+                                                    true,
+                                                    smmfObj:getSENTTable())
+                        sent:doNotDuplicate(true)
+                        return sent
+                    end,
+                })[forceholo and 1 or smmfObj:getType()]()
+    
+                smmfObj:setLinkedEnt(part)
+    
+                if baseParent and not smmfObj:getParent() then part:setParent(baseParent) end
+                smmfObj:autoSet(part,function(property,value)
+                    if autoPropertyCB(i,part,property,value) then return true end
+    
+                    if property == "Scale" and scaleVar ~= 1 then
+                        part:setScale(smmfObj:getScale() * scaleVar)
+                        return true
+                    end
+                end)
+                if forceholo and scaleVar ~= 1 then part:setScale(Vector(scaleVar)) end
+    
+                postEntCB(i,part,protectedSmmfObj)
+    
+                table.insert(children,part)
+                local key = smmfObj:getKey()
+                if key then
+                    keyParts[key] = part
+                    keyToIndex[key] = i
+                end
+            end
+            smmfObj:clearLinkedEnts()
+    
+            self.base = base
+            self.children = children
+            self.keyParts = keyParts
+            self.keyToIndex = keyToIndex
+            self.defaultOrientationOverride = setmetatable({},{__index = function(t,k) local nt = {} t[k] = nt return nt end})
+            self.finishedSpawning = true
+    
+            if constructFinishedCB then constructFinishedCB(keyParts,children,self) end
+    
+            while true do coroutine.yield(true) end
+        end)
+        table.insert(modelQueue,co)
+    
+        hook.add("tick","kl:cs_modelspawn",function()
+            if modelQueue[1] ~= nil then
+                if modelQueue[1]() then
+                    table.remove(modelQueue,1)
+                end
+            else
+                hook.remove("tick","kl:cs_modelspawn")
+            end
+        end)
+    end
+    
+    function construct:getKeyParts()
+        return self.keyParts
+    end
+    
+    function construct:getKeyPart(key)
+        return self.keyParts[key]
+    end
+    
+    function construct:getChildren()
+        return self.children
+    end
+    
+    function construct:remove()
+        local children = self.children
+        for i=1,#children do
+            local part = children[i]
+            if hasPermission("entities.remove",part) and isValid(part) then part:remove() end
+        end
+    end
+    
+    function construct:resetKeyPartOrientations(keys)
+        local model = self.model
+        local keyParts = self.keyParts
+        local keyToIndex = self.keyToIndex
+    
+        if not keys then --assume all
+            keys = table.getKeys(keyParts)
+        end
+    
+        for _,key in pairs(keys) do
+            model:setIndex(keyToIndex[key])
+    
+            local orientOverride = rawget(self.defaultOrientationOverride,key)
+    
+            local keyPart = keyParts[key]
+            local pos = orientOverride and orientOverride.pos or model:getPos()
+            keyPart:setLocalPos(pos)
+            local ang = orientOverride and orientOverride.ang or model:getAngles()
+            keyPart:setLocalAngles(ang)
+        end
+    end
+    
+    function construct:setKeyPartDefaultPos(key,pos)
+        self.defaultOrientationOverride[key].pos = pos
+    end
+    
+    function construct:setKeyPartDefaultAngles(key,ang)
+        self.defaultOrientationOverride[key].ang = ang
+    end
+elseif CLIENT then
+    
+end

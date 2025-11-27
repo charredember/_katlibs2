@@ -1,0 +1,10 @@
+--@author ember
+--@shared
+--@include _katlibs_priv/universal/_oo/smmf.txt
+--Standard Multi-Model Format
+--Data structure for the definition of multi-part models with varying properties
+--SMMF objects are not meant to be editable or mutable, they are designed to be generated once and used repeatedly.
+--If you want to edit a SMMF object, keep the original copy around and regenerate a new SMMF for each new revision.
+
+if player() != owner() then return end
+require("_katlibs_priv/universal/_oo/smmf.txt")

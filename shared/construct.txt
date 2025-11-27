@@ -1,0 +1,6 @@
+--@author ember
+--@shared
+--@include _katlibs_priv/shared/_oo/construct.txt
+
+if CLIENT and player() ~= owner() then return end
+require("_katlibs_priv/shared/_oo/construct.txt")

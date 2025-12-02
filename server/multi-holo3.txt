@@ -1,0 +1,331 @@
+--@author ember
+--@server
+
+print("multi-holo3 is depreciated in favor of smmf/construct")
+--[[
+data format
+
+{
+["model1"] = {
+    ["models"] = {}
+    ["materials"] = {}
+    ["scale"] = {}
+    ["pos"] = {}
+    ["ang"] = {}
+    ["colors"] = {}
+
+    ["shading"] = {} --(optional)
+    ["clips"] = {} --(optional)
+    ["parents"] = {} --(optional)
+},
+["model2"] = {
+    ["models"] = {}
+    etc.
+    |
+    v
+}
+
+all non-optional tables are all sequential parallel arrays.
+
+optional table format:
+for holos that the table does not apply to, there is no data in the table referring to them
+
+parents:
+each index is a table containing
+{parent holoindex, child holoindex}
+
+clips:
+each index is a table containing
+{clipped holoindex,clip index,clip pos,clip dir,clipusesglobalcoords) <-clipusesglobalcoords is a number 0-1 not a bool (blame wire devs)
+]]--
+
+if filenetworking == nil then
+    throw("katlibs:multiholo requires filenetworking loaded before!")
+end
+
+multiholo = class("katlib_multiholo3")
+local modelPacks = {}
+
+-------------------------------------- class functions
+
+--loading
+local packNameCBs = {}
+local requestedPaths = {}
+function multiholo.static.loadPack(path)
+    local fileName = path:match("[^/]*.txt$")
+    local packName = fileName:sub(0,#fileName-4)
+    requestedPaths[path] = true
+
+    filenetworking.loadFile(path,function(data)
+        local pack = von.deserialize(bit.decompress(data))
+        modelPacks[packName] = pack
+
+        printConsole(Color(255,0,0),"kl:mh| ",Color(255,255,255)," pack \"" .. packName .. "\" loaded successfully")
+
+        local str = ""
+        for k,v in pairs(pack) do
+            str = str .. k .. ", "
+        end
+        printConsole(Color(255,255,255),"-"..str)
+
+        if packNameCBs[packName] ~= nil then
+            packNameCBs[packName]()
+        end
+    end)
+end
+
+function multiholo.static.savePack(path,pack)
+    filenetworking.saveFile(path,bit.compress(von.serialize(pack)))
+end
+
+function multiholo.static.onPackLoaded(packName,cbFunc)
+    packNameCBs[packName] = cbFunc
+end
+
+function multiholo.static.printPacks()
+    printTable(modelPacks)
+end
+
+function multiholo.static.packRequested(path)
+    return requestedPaths[path] ~= nil
+end
+
+function multiholo.static.packLoaded(packName)
+    return modelPacks[packName] ~= nil
+end
+
+function multiholo.static.createModel(base,holograms,threaded)
+    local models = {}
+    local materials = {}
+    local scale = {}
+    local pos = {}
+    local ang = {}
+    local colors = {}
+
+    local clips = {}
+    local parents = {}
+    local shading = {}
+
+    local referencetab = {}
+    for i=1,#holograms do
+        referencetab[holograms[i]] = i
+    end
+
+    for i=1,#holograms do
+        table.insert(models,holograms[i]:getModel())
+        table.insert(materials,holograms[i]:getMaterial())
+
+        local holoScale = holograms[i]:getScale()
+        holoScale:round(3)
+        table.insert(scale,holoScale)
+
+        local localPos = base:worldToLocal(holograms[i]:getPos())
+        localPos:round(3)
+        table.insert(pos,localPos)
+
+        local localAng = base:worldToLocalAngles(holograms[i]:getAngles())
+        localAng:round(3)
+        table.insert(ang,localAng)
+
+        local holoColor = holograms[i]:getColor()
+        holoColor:round(0)
+        table.insert(colors,holoColor)
+
+        local parent = holograms[i]:getParent()
+        if parent ~= base and parent ~= nil and referencetab[parent] ~= nil then
+            table.insert(parents,{i,referencetab[parent]})
+        end
+
+        local cliptable = holograms[i]:getClipping()
+        if cliptable ~= nil and #cliptable > 0 then
+            local j = 0
+            for _,v in pairs(cliptable) do
+                j = j + 1
+
+                if v.local_ent ~= holograms[i] and referencetab[v.local_ent] ~= nil then
+                    table.insert(clips,{i,j,v.origin,v.normal,referencetab[v.local_ent]})
+                else
+                    table.insert(clips,{i,j,v.origin,v.normal})
+                end
+            end
+        end
+
+        local lighting = holograms[i]:getSuppressEngineLighting()
+        if lighting then
+            shading[i] = 1
+        end
+
+        if threaded then
+            coroutine.yield()
+        end
+    end
+
+    local model = {}
+
+    model.models = models
+    model.materials = materials
+    model.scale = scale
+    model.pos = pos
+    model.ang = ang
+    model.colors = colors
+
+    if #parents > 0 then
+        model.parents = parents
+    end
+
+    if #clips > 0 then
+        model.clips = clips
+    end
+
+    if #table.getKeys(shading) > 0 then
+        model.shading = shading
+    end
+
+    return model
+end
+
+--[[
+Revelation 20:10
+    10. And the wire developers that made color the vector4 type were cast into the lake of fire and brimstone,
+    where the beast and the false prophet are, and shall be tormented day and night for ever and ever.
+]]
+
+function multiholo.static.fixColors(model)
+    local tab = model.colors
+    local newTab = {}
+
+    for i=1,#tab do
+        newTab[i] = Color(tab[i][1],tab[i][2],tab[i][3],tab[i][4])
+    end
+
+    model.colors = newTab
+end
+
+-------------------------------------- object methods
+local modelQueue = {}
+function multiholo:initialize(parent,modelStr,cbFunc,optionalVars)
+    self.modelStr = modelStr
+    self.parent = parent
+    self.holoArr = {}
+
+    self._parentTab = {}
+    setmetatable(self._parentTab, {["__index"]=function(t,k) t[k] = self.parent return self.parent end})
+
+    local modelStrExplode = string.explode("/",modelStr)
+    local packName = modelStrExplode[1]
+    local modelName = modelStrExplode[2]
+    local model = modelPacks[packName][modelName]
+
+    local scaleVar = 1
+    local nodraw = false
+    if optionalVars then
+        scaleVar = optionalVars.scaleVar
+        noDraw = optionalVars.noDraw
+    end
+
+    local itr = 0
+    local count = #model.models
+    local co = coroutine.wrap(function()
+        while itr < count do
+            if hologram.canSpawn() then
+                itr = itr+1
+
+                local newHolo = hologram.create(parent:localToWorld(model.pos[itr]*scaleVar),
+                                                parent:localToWorldAngles(model.ang[itr]),
+                                                model.models[itr],
+                                                model.scale[itr]*scaleVar
+                                                )
+                newHolo:setMaterial(model.materials[itr])
+                local c = model.colors[itr]
+                newHolo:setColor(Color(c.r,c.g,c.b,c.a))
+                newHolo:setParent(parent)
+                newHolo:setNoDraw(noDraw)
+
+                self.holoArr[itr] = newHolo
+            else
+                coroutine.yield()
+            end
+        end
+
+        if model.clips ~= nil then
+            for i=1,#model.clips do
+                local holoIndex = model.clips[i][1]
+                local parentIndex = model.clips[i][5] ~= nil and model.clips[i][5] or holoIndex
+
+                self.holoArr[holoIndex]:setClip(model.clips[i][2],
+                                true,
+                                model.clips[i][3]*scaleVar,
+                                model.clips[i][4],
+                                self.holoArr[parentIndex])
+            end
+        end
+
+        if model.parents ~= nil then
+            for i=1,#model.parents do
+                local holoIndex = model.parents[i][1]
+                local parentIndex = model.parents[i][2]
+
+                self.holoArr[holoIndex]:setParent(self.holoArr[parentIndex])
+                self._parentTab[holoIndex] = self.holoArr[parentIndex]
+            end
+        end
+
+        if model.shading ~= nil then
+            for k,v in pairs(model.shading) do
+                if v == true or v == 1 then --legacy holdover
+                    self.holoArr[k]:suppressEngineLighting(true)
+                end
+            end
+        end
+
+        if cbFunc ~= nil then
+            cbFunc(self.holoArr)
+        end
+
+        while true do
+            coroutine.yield(true)
+        end
+    end)
+    table.insert(modelQueue,co)
+
+    hook.add("tick","kl:mh_modelspawn",function()
+        if modelQueue[1] ~= nil then
+            if modelQueue[1]() then
+                table.remove(modelQueue,1)
+            end
+        else
+            hook.remove("tick","kl:mh_modelspawn")
+        end
+    end)
+end
+
+function multiholo:getSubPart(index)
+    return self.holoArr[index]
+end
+
+function multiholo:subPartSetLocalPos(index,pos)
+    self.holoArr[index]:setLocalPos(pos)
+end
+
+function multiholo:subPartSetLocalAngles(index,ang)
+    self.holoArr[index]:setLocalAngles(ang)
+end
+
+function multiholo:resetSubholoOrientations(subholoIndexes)
+    local modelStrExplode = string.explode("/",self.modelStr)
+    local packName = modelStrExplode[1]
+    local modelName = modelStrExplode[2]
+    local model = modelPacks[packName][modelName]
+
+    if subholoIndexes == nil then --assume all
+        subholoIndexes = {}
+        for i=1,#model.models do
+            table.insert(subholoIndexes,i)
+        end
+    end
+
+    for _,index in pairs(subholoIndexes) do
+        self.holoArr[index]:setLocalPos(model.pos[index])
+        self.holoArr[index]:setLocalAngles(model.ang[itr])
+    end
+end
